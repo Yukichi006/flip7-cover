@@ -114,15 +114,10 @@ object CoverContent {
         val r = if (prefs.showClock) box / 2f else 0f
         val cx = lp.leftMargin + box / 2f
         val cy = lp.topMargin + box / 2f
-        prefs.clockStyle.dial?.let { pattern ->
-            return DotDialView(context, cx, cy, r, pattern, prefs.animSpeed,
-                prefs.taperHands, prefs.glow, prefs.boldMinute, prefs.minuteTip)
-        }
-        return DotClockView(
-            context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r,
-            prefs.clockStyle.dotVariant ?: DotClockView.Variant.MATRIX,
-            prefs.animSpeed, prefs.boldMinute, prefs.minuteTip,
-        )
+        // 背景だけドット時計にして時計が別のデザインのときは、扇形にする
+        val pattern = prefs.clockStyle.dial ?: DotDialView.Pattern.SECTOR
+        return DotDialView(context, cx, cy, r, pattern, prefs.animSpeed,
+            prefs.taperHands, prefs.glow, prefs.boldMinute, prefs.minuteTip)
     }
 
     /** ぼかした背景の分だけ枠を広げて [view] をその中央に置き、ドラッグ用の [tag] を付けて配置する。 */
@@ -240,20 +235,6 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
                     line(canvas, cx, cy, i * 30f, r * 0.78f, r * 0.88f, r * 0.03f, cyan)
                 }
                 hands(canvas, cx, cy, r, hour, minute, sec, r * 0.05f, r * 0.035f, cyan, 0xFFF472B6.toInt(), glow = r * 0.12f)
-            }
-            ClockStyle.DOTS -> {
-                shadow(0f, Color.TRANSPARENT)
-                paint.style = Paint.Style.FILL
-                paint.color = 0x66000000
-                canvas.drawCircle(cx, cy, r, paint)
-                shadow(r * 0.02f, Color.BLACK)
-                for (i in 0 until 60) {
-                    val major = i % 5 == 0
-                    dot(canvas, cx, cy, i * 6f, r * 0.88f, if (major) r * 0.045f else r * 0.015f,
-                        if (major) Color.WHITE else 0xFFB0B0B0.toInt())
-                }
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.08f, r * 0.055f, Color.WHITE, 0xFFFACC15.toInt())
-                dot(canvas, cx, cy, sec * 6f, r * 0.7f, r * 0.04f, 0xFFFACC15.toInt())
             }
             else -> {
                 shadow(r * 0.03f, Color.BLACK)
