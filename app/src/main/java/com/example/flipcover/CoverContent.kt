@@ -274,11 +274,13 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
             val hourHit = bump(segmentDistance(x, y, hx, hy), g * 0.95f)
             val minHit = bump(segmentDistance(x, y, mx, my), g * 0.6f) * 0.9f
             val v = max(hourHit, minHit)
-            paint.color = Gear.ON
-            paint.alpha = (30 + 225 * v).toInt()
-            canvas.drawCircle(cx + x, cy + y, g * (0.1f + 0.32f * v), paint)
+            // 近い方の針の色に染める
+            paint.color = if (minHit > hourHit) MINUTE_COLOR else HOUR_COLOR
+            paint.alpha = (30 + 160 * v).toInt()
+            canvas.drawCircle(cx + x, cy + y, g * (0.1f + 0.3f * v), paint)
         }
         paint.alpha = 255
+        solidHands(canvas, cx, cy, r, hour, minute, g * 0.55f, g * 0.32f)
         dot(canvas, cx, cy, sec * 6f, r * 0.99f, g * 0.3f, Gear.ORANGE)
     }
 
@@ -288,6 +290,7 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
         dotRow(canvas, cx, cy, r * 0.95f, r * 0.02f, 60, sec.toInt())
         dotRow(canvas, cx, cy, r * 0.74f, r * 0.024f, 60, minute.toInt())
         dotRow(canvas, cx, cy, r * 0.5f, r * 0.05f, 12, hour.toInt() % 12)
+        solidHands(canvas, cx, cy, r, hour, minute, r * 0.06f, r * 0.035f, hourLen = 0.36f, minLen = 0.64f)
     }
 
     private fun dotRow(canvas: Canvas, cx: Float, cy: Float, radius: Float, size: Float, count: Int, now: Int) {
@@ -309,13 +312,16 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
             dot(canvas, cx, cy, i * 30f, r * 0.94f, r * (if (quarter) 0.045f else 0.025f),
                 if (quarter) Gear.ON else Gear.GRAY)
         }
+        // ドットの下に細い線を通して、針として一続きに見えるようにする
+        line(canvas, cx, cy, hour * 30f, 0f, r * 0.5f, r * 0.03f, HOUR_COLOR and 0x00FFFFFF or 0x99000000.toInt())
+        line(canvas, cx, cy, minute * 6f, 0f, r * 0.78f, r * 0.02f, MINUTE_COLOR and 0x00FFFFFF or 0x99000000.toInt())
         for (k in 0 until 6) {
             val f = (k + 1) / 6f
-            dot(canvas, cx, cy, hour * 30f, r * 0.5f * f, r * (0.075f - 0.03f * f), Gear.ON)
+            dot(canvas, cx, cy, hour * 30f, r * 0.5f * f, r * (0.075f - 0.03f * f), HOUR_COLOR)
         }
         for (k in 0 until 9) {
             val f = (k + 1) / 9f
-            dot(canvas, cx, cy, minute * 6f, r * 0.78f * f, r * (0.055f - 0.025f * f), Gear.ON)
+            dot(canvas, cx, cy, minute * 6f, r * 0.78f * f, r * (0.055f - 0.025f * f), MINUTE_COLOR)
         }
         for (k in 7 downTo 0) {
             val fade = 1f - k / 8f
@@ -324,6 +330,18 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
                 Gear.ORANGE and 0x00FFFFFF or ((fade * fade * 255).toInt() shl 24))
         }
         dot(canvas, cx, cy, 0f, 0f, r * 0.05f, Gear.ON)
+    }
+
+    /** 時針（オフホワイト）と分針（黄色）を実線で描く。 */
+    private fun solidHands(
+        canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float,
+        hourW: Float, minW: Float, hourLen: Float = 0.5f, minLen: Float = 0.82f,
+    ) {
+        line(canvas, cx, cy, hour * 30f, 0f, r * hourLen, hourW, HOUR_COLOR)
+        line(canvas, cx, cy, minute * 6f, 0f, r * minLen, minW, MINUTE_COLOR)
+        paint.style = Paint.Style.FILL
+        paint.color = HOUR_COLOR
+        canvas.drawCircle(cx, cy, hourW * 0.9f, paint)
     }
 
     /** 原点から (tx, ty) までの線分と点 (x, y) の距離。 */
@@ -407,6 +425,10 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
 
     private companion object {
         val ARABIC = Array(12) { (it + 1).toString() }
+        /** ドット系の時計の針の色。時針と分針を見分けやすくする。 */
+        val HOUR_COLOR = Gear.ON
+        val MINUTE_COLOR = Gear.YELLOW
+
         val ROMAN_NUMERALS = arrayOf("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
     }
 }
