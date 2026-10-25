@@ -210,8 +210,8 @@ class SpaceView(context: Context, private val planet: Planet) : View(context) {
         bmp.setPixels(out, 0, bw, 0, 0, bw, bh)
         canvas.drawBitmap(bmp, null, dest, bitmapPaint)
 
-        // ゆっくりした動きなので 20fps 程度で十分
-        postInvalidateDelayed(50)
+        // とてもゆっくりした動きなので、電池持ちを優先して 8fps 程度にする
+        postInvalidateDelayed(125)
     }
 
     private fun renderEarth(t: Double) {

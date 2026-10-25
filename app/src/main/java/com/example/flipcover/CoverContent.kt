@@ -87,8 +87,14 @@ object CoverContent {
                     setShadowLayer(12f, 0f, 0f, Color.BLACK)
                 } to box / 2
             }
-            clock.tag = TAG_CLOCK
-            root.addView(clock, place(size, prefs.clockX, prefs.clockY, box, boxH))
+            // ぼかした背景の分だけ枠を広げ、時計はその中央に置く
+            val pad = if (prefs.clockBackdrop) (box * 0.18f).toInt() else 0
+            val holder = FrameLayout(context).apply {
+                tag = TAG_CLOCK
+                if (prefs.clockBackdrop) addView(SoftBackdrop(context), FrameLayout.LayoutParams(-1, -1))
+                addView(clock, FrameLayout.LayoutParams(box, boxH, Gravity.CENTER))
+            }
+            root.addView(holder, place(size, prefs.clockX, prefs.clockY, box + pad * 2, boxH + pad * 2))
         }
 
         val icon = (prefs.appsSize * w).toInt()
@@ -144,6 +150,29 @@ object CoverContent {
             }
         }
         return iv
+    }
+}
+
+/** 時計の後ろに敷く、輪郭をぼかした暗い楕円。背景が明るくても時刻を読みやすくする。 */
+class SoftBackdrop(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        // 中心はしっかり暗く、外側へなだらかに消える
+        paint.shader = RadialGradient(
+            w / 2f, h / 2f, w / 2f,
+            intArrayOf(0x99000000.toInt(), 0x8C000000.toInt(), 0x66000000, 0x26000000, 0x00000000),
+            floatArrayOf(0f, 0.4f, 0.65f, 0.85f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        // 円のグラデーションを縦に縮めて、枠の形に合わせた楕円にする
+        canvas.save()
+        canvas.scale(1f, height / width.toFloat(), width / 2f, height / 2f)
+        canvas.drawCircle(width / 2f, height / 2f, width / 2f, paint)
+        canvas.restore()
     }
 }
 
@@ -214,8 +243,8 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
             }
         }
 
-        // 秒針を滑らかに動かしつつ、毎フレームは描かない
-        postInvalidateDelayed(100)
+        // 秒針が動いて見える程度に、描き直しは控えめにする
+        postInvalidateDelayed(250)
     }
 
     private fun shadow(radius: Float, color: Int) {
@@ -303,13 +332,13 @@ class AuroraView(context: Context) : View(context) {
         canvas.drawColor(0xFF0B0B1A.toInt())
         colors.forEachIndexed { i, c ->
             val phase = i * 1.7f
-            val cx = w * (0.5f + 0.35f * sin(t * 0.35f + phase))
-            val cy = h * (0.5f + 0.35f * cos(t * 0.27f + phase * 1.3f))
-            val r = maxOf(w, h) * (0.45f + 0.1f * sin(t * 0.5f + phase))
+            val cx = w * (0.5f + 0.35f * sin(t * 0.12f + phase))
+            val cy = h * (0.5f + 0.35f * cos(t * 0.09f + phase * 1.3f))
+            val r = maxOf(w, h) * (0.45f + 0.1f * sin(t * 0.17f + phase))
             paint.shader = RadialGradient(cx, cy, r, c and 0x99FFFFFF.toInt(), Color.TRANSPARENT, Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, r, paint)
         }
-        postInvalidateOnAnimation()
+        postInvalidateDelayed(66)
     }
 }
 
@@ -326,7 +355,7 @@ class ParticlesView(context: Context) : View(context) {
         x = Random.nextFloat() * width,
         y = if (atBottom) height + 20f else Random.nextFloat() * height,
         r = 3f + Random.nextFloat() * 10f,
-        speed = 30f + Random.nextFloat() * 90f,
+        speed = 15f + Random.nextFloat() * 40f,
         drift = Random.nextFloat() * 6.28f,
         hue = 180f + Random.nextFloat() * 140f,
     )
@@ -338,7 +367,7 @@ class ParticlesView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val now = System.nanoTime()
-        val dt = ((now - last) / 1e9f).coerceAtMost(0.05f)
+        val dt = ((now - last) / 1e9f).coerceAtMost(0.2f)
         last = now
         time += dt
         canvas.drawColor(0xFF050510.toInt())
@@ -347,12 +376,12 @@ class ParticlesView(context: Context) : View(context) {
             p.y -= p.speed * dt
             p.x += sin(time + p.drift) * 15f * dt
             if (p.y < -20f) particles[i] = spawn(atBottom = true)
-            val alpha = (0.5f + 0.5f * sin(time * 2f + p.drift)).coerceIn(0.2f, 1f)
+            val alpha = (0.5f + 0.5f * sin(time * 0.8f + p.drift)).coerceIn(0.2f, 1f)
             paint.color = Color.HSVToColor((alpha * 255).toInt(), floatArrayOf(p.hue, 0.6f, 1f))
             paint.setShadowLayer(p.r * 2, 0f, 0f, paint.color)
             canvas.drawCircle(p.x, p.y, p.r, paint)
         }
-        postInvalidateOnAnimation()
+        postInvalidateDelayed(66)
     }
 }
 

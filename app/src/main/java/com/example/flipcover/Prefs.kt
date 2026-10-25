@@ -39,6 +39,11 @@ class Prefs(context: Context) {
             .getOrElse { if (sp.getBoolean("analog", false)) ClockStyle.SIMPLE else ClockStyle.DIGITAL }
         set(v) = sp.edit().putString("clockStyle", v.name).apply()
 
+    /** 時計の後ろにぼかした暗い背景を敷く。 */
+    var clockBackdrop: Boolean
+        get() = sp.getBoolean("clockBackdrop", true)
+        set(v) = sp.edit().putBoolean("clockBackdrop", v).apply()
+
     // 配置はカバー画面に対する割合で持つ（位置は中心、大きさは画面幅に対する割合）
     var clockX: Float
         get() = sp.getFloat("clockX", 0.5f)

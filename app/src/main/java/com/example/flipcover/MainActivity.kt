@@ -49,6 +49,10 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
+        findViewById<MaterialSwitch>(R.id.backdropSwitch).apply {
+            isChecked = prefs.clockBackdrop
+            setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
+        }
         findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
 

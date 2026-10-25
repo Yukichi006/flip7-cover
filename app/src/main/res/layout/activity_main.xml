@@ -85,6 +85,12 @@
             android:layout_marginTop="12dp"
             android:text="時計を重ねて表示" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/backdropSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="時計の後ろをぼかして見やすくする" />
+
         <Button
             android:id="@+id/clockStyle"
             style="@style/Widget.Material3.Button.OutlinedButton"

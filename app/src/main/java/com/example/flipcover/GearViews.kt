@@ -27,22 +27,30 @@ object Gear {
     const val GRAY = 0xFF8A8780.toInt()
 }
 
-/** 機材風の背景の共通部分。[frame] で毎フレーム描き、指定の間隔で描き直す。 */
-abstract class GearView(context: Context, private val intervalMs: Long = 33) : View(context) {
+/**
+ * 機材風の背景の共通部分。[frame] で描き、指定の間隔で描き直す。
+ * 電池持ちのため、どれも動きはゆっくり、描き直しは少なめにしている。
+ */
+abstract class GearView(context: Context, private val intervalMs: Long = 100) : View(context) {
     protected val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val start = System.nanoTime()
 
     final override fun onDraw(canvas: Canvas) {
         canvas.drawColor(Gear.BG)
         frame(canvas, (System.nanoTime() - start) / 1e9f)
-        postInvalidateDelayed(intervalMs)
+        postInvalidateDelayed(nextDelay())
     }
+
+    protected open fun nextDelay(): Long = intervalMs
 
     protected abstract fun frame(canvas: Canvas, t: Float)
 }
 
 /** 60 個のドットが 1 秒ごとに点いていく。今の秒はオレンジ。 */
-class DotSecondsView(context: Context) : GearView(context, 50) {
+class DotSecondsView(context: Context) : GearView(context, 1000) {
+    // 秒の変わり目に合わせて 1 秒に 1 回だけ描き直す
+    override fun nextDelay() = 1000 - System.currentTimeMillis() % 1000 + 5
+
     override fun frame(canvas: Canvas, t: Float) {
         val cols = 6
         val rows = 10
@@ -51,7 +59,6 @@ class DotSecondsView(context: Context) : GearView(context, 50) {
         val oy = (height - gap * (rows - 1)) / 2
         val now = Calendar.getInstance()
         val sec = now.get(Calendar.SECOND)
-        val frac = now.get(Calendar.MILLISECOND) / 1000f
         for (i in 0 until 60) {
             val x = ox + (i % cols) * gap
             val y = oy + (i / cols) * gap
@@ -60,9 +67,7 @@ class DotSecondsView(context: Context) : GearView(context, 50) {
                 i == sec -> Gear.ORANGE
                 else -> Gear.OFF
             }
-            // 今の秒のドットだけ、拍に合わせて少し脈打つ
-            val r = gap * 0.32f * if (i == sec) 1f + 0.12f * (1 - frac) else 1f
-            canvas.drawCircle(x, y, r, paint)
+            canvas.drawCircle(x, y, gap * 0.32f, paint)
         }
     }
 }
@@ -76,7 +81,7 @@ class LevelMeterView(context: Context) : GearView(context) {
     private val rect = RectF()
 
     override fun frame(canvas: Canvas, t: Float) {
-        val dt = (t - last).coerceIn(0f, 0.1f)
+        val dt = (t - last).coerceIn(0f, 0.5f)
         last = t
         val colW = width / (cols + 1f)
         val segH = height * 0.7f / segments
@@ -85,9 +90,9 @@ class LevelMeterView(context: Context) : GearView(context) {
         for (c in 0 until cols) {
             // 周期の違う波を重ねて、音楽に合わせて揺れているように見せる
             val p = c * 1.7f
-            val level = (0.45f + 0.25f * sin(t * 1.3f + p) + 0.18f * sin(t * 3.1f + p * 2.3f) +
-                0.1f * sin(t * 7.7f + p * 0.7f)).coerceIn(0.05f, 1f)
-            peak[c] = max(level, peak[c] - dt * 0.18f)
+            val level = (0.45f + 0.28f * sin(t * 0.25f + p) + 0.15f * sin(t * 0.6f + p * 2.3f) +
+                0.05f * sin(t * 1.3f + p * 0.7f)).coerceIn(0.05f, 1f)
+            peak[c] = max(level, peak[c] - dt * 0.05f)
             val lit = (level * segments).toInt()
             val peakSeg = (peak[c] * segments).toInt().coerceAtMost(segments - 1)
             val cx = colW * (c + 1)
@@ -114,18 +119,23 @@ class DotWaveView(context: Context) : GearView(context) {
         val rows = (height / gap).toInt() - 1
         val oy = (height - gap * (rows - 1)) / 2
         // 波紋の中心が画面の中をゆっくり巡る
-        val sx = width * (0.5f + 0.3f * sin(t * 0.13f))
-        val sy = height * (0.5f + 0.3f * sin(t * 0.17f + 1f))
+        val sx = width * (0.5f + 0.3f * sin(t * 0.04f))
+        val sy = height * (0.5f + 0.3f * sin(t * 0.05f + 1f))
         for (j in 0 until rows) for (i in 0 until cols) {
             val x = gap * (i + 1)
             val y = oy + j * gap
             val d = hypot(x - sx, y - sy) / gap
-            val v = 0.5f + 0.5f * sin(d * 0.9f - t * 2.2f)
-            paint.color = if (v > 0.985f) Gear.ORANGE else Gear.ON
-            paint.alpha = (90 + 165 * v).toInt()
-            canvas.drawCircle(x, y, gap * (0.1f + 0.26f * v), paint)
+            val v = 0.5f + 0.5f * sin(d * 0.6f - t * 0.5f)
+            paint.color = Gear.ON
+            paint.alpha = (110 + 110 * v).toInt()
+            canvas.drawCircle(x, y, gap * (0.16f + 0.16f * v), paint)
         }
+        // 差し色は波の中心に近いドット 1 つだけ
+        val ci = ((sx / gap).toInt() - 1).coerceIn(0, cols - 1)
+        val cj = ((sy - oy) / gap).toInt().coerceIn(0, maxOf(rows - 1, 0))
+        paint.color = Gear.ORANGE
         paint.alpha = 255
+        canvas.drawCircle(gap * (ci + 1), oy + cj * gap, gap * 0.3f, paint)
     }
 }
 
@@ -140,15 +150,15 @@ class SequencerView(context: Context) : GearView(context) {
     private val rect = RectF()
 
     override fun frame(canvas: Canvas, t: Float) {
-        // 120 BPM の 8 分音符で 1 列ずつ進む
-        val stepLen = 0.25f
+        // 1 秒に 1 列ずつ、ゆっくり進む
+        val stepLen = 1f
         val step = (t / stepLen).toInt()
         val col = step % cols
         val bar = step / cols
         if (bar != lastBar) {
             // 小節が変わるたびにパターンを少しだけ変える
             lastBar = bar
-            repeat(3) {
+            repeat(1) {
                 val r = rnd.nextInt(rows)
                 val c = rnd.nextInt(cols)
                 steps[r][c] = !steps[r][c]
@@ -171,7 +181,7 @@ class SequencerView(context: Context) : GearView(context) {
                 c == col -> Gear.OFF
                 else -> Gear.PAD
             }
-            if (on && c == col) paint.alpha = (170 + 85 * hit).toInt()
+            if (on && c == col) paint.alpha = (200 + 55 * hit).toInt()
             canvas.drawRoundRect(rect, pad * 0.18f, pad * 0.18f, paint)
             paint.alpha = 255
             if (leds[r][c] && !on) {
