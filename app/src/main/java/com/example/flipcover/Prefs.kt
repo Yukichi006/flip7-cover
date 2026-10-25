@@ -1,5 +1,6 @@
 package com.example.flipcover
 
+import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 
@@ -20,6 +21,16 @@ class Prefs(context: Context) {
     var showClock: Boolean
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
+
+    var analogClock: Boolean
+        get() = sp.getBoolean("analog", false)
+        set(v) = sp.edit().putBoolean("analog", v).apply()
+
+    /** カバー画面に並べるアプリ（表示順）。 */
+    var apps: List<ComponentName>
+        get() = sp.getString("apps", null).orEmpty().split('|')
+            .mapNotNull { ComponentName.unflattenFromString(it) }
+        set(v) = sp.edit().putString("apps", v.joinToString("|") { it.flattenToString() }).apply()
 
     var gifUri: Uri?
         get() = sp.getString("gif", null)?.let(Uri::parse)

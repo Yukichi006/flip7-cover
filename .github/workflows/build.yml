@@ -22,7 +22,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: 署名鍵を用意
+        env:
+          KEYSTORE_B64: ${{ secrets.FLIPCOVER_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/flipcover.jks"
+            echo "FLIPCOVER_KEYSTORE=$RUNNER_TEMP/flipcover.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::FLIPCOVER_KEYSTORE_B64 が未設定のため、毎回異なる鍵で署名されます（上書き更新できません）"
+          fi
       - run: chmod +x gradlew && ./gradlew assembleDebug
+        env:
+          FLIPCOVER_KEYSTORE_PASSWORD: ${{ secrets.FLIPCOVER_KEYSTORE_PASSWORD }}
       - name: APK の SHA-256 を表示
         run: sha256sum app/build/outputs/apk/debug/*.apk | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

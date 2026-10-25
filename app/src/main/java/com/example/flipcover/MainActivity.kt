@@ -11,8 +11,10 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.RadioGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 
 class MainActivity : AppCompatActivity() {
@@ -47,6 +49,11 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
+        findViewById<MaterialSwitch>(R.id.analogSwitch).apply {
+            isChecked = prefs.analogClock
+            setOnCheckedChangeListener { _, v -> prefs.analogClock = v; refresh() }
+        }
+        findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
 
         // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
         findViewById<TextView>(R.id.modeAurora).setOnClickListener { prefs.mode = Mode.AURORA; refresh() }
@@ -58,6 +65,33 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    private fun pickApps() {
+        val pm = packageManager
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val candidates = pm.queryIntentActivities(launcher, 0)
+            .filter { it.activityInfo.packageName != packageName }
+            .map { ComponentName(it.activityInfo.packageName, it.activityInfo.name) to it.loadLabel(pm).toString() }
+            .sortedBy { it.second.lowercase() }
+        val current = prefs.apps
+        val checked = BooleanArray(candidates.size) { candidates[it].first in current }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("カバー画面に置くアプリ（最大${MAX_APPS}個）")
+            .setMultiChoiceItems(candidates.map { it.second }.toTypedArray(), checked) { _, i, v -> checked[i] = v }
+            .setPositiveButton("OK") { _, _ ->
+                val selected = candidates.filterIndexed { i, _ -> checked[i] }.map { it.first }
+                // 既に選んでいたアプリの並び順を保ち、新しく選んだものは後ろに足す
+                val ordered = current.filter { it in selected } + selected.filter { it !in current }
+                if (ordered.size > MAX_APPS) {
+                    Toast.makeText(this, "最初の${MAX_APPS}個だけ表示します", Toast.LENGTH_SHORT).show()
+                }
+                prefs.apps = ordered.take(MAX_APPS)
+                refresh()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     /** 再起動後もサービスがファイルを読めるよう、URI の権限を永続化する。 */
@@ -79,6 +113,10 @@ class MainActivity : AppCompatActivity() {
             Mode.VIDEO -> prefs.videoUri?.lastPathSegment ?: ""
             else -> ""
         }
+
+        findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
+            runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
+        }.joinToString("、").ifEmpty { "なし" }
 
         preview.removeAllViews()
         preview.addView(CoverContent.create(this, prefs), FrameLayout.LayoutParams(-1, -1))
@@ -107,5 +145,9 @@ class MainActivity : AppCompatActivity() {
                 if (d.displayId == cover?.displayId) "  ← カバー画面" else ""
         }.ifEmpty { "なし" } + if (cover != null && dm.displays.none { it.displayId == cover.displayId })
             "\nid=${cover.displayId} \"${cover.name}\"  ← カバー画面" else ""
+    }
+
+    companion object {
+        private const val MAX_APPS = 5
     }
 }

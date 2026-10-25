@@ -1,6 +1,9 @@
 package com.example.flipcover
 
 import android.accessibilityservice.AccessibilityService
+import android.app.ActivityOptions
+import android.content.ComponentName
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -12,6 +15,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 
 /**
  * 端末が閉じられてカバー画面だけが点灯したとき、
@@ -28,6 +32,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private var overlay: View? = null
     private var overlayWm: WindowManager? = null
     private var dismissedUntilReopen = false
+    private var coverDisplayId = Display.INVALID_DISPLAY
 
     override fun onServiceConnected() {
         prefs = Prefs(this)
@@ -71,7 +76,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private fun show(display: Display) {
         val ctx = createWindowContext(display, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null)
         val wm = ctx.getSystemService(WindowManager::class.java)
-        val view = CoverContent.create(ctx, prefs)
+        val view = CoverContent.create(ctx, prefs, ::launch)
 
         val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -99,7 +104,23 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         runCatching { wm.addView(view, lp) }.onSuccess {
             overlay = view
             overlayWm = wm
+            coverDisplayId = display.displayId
         }
+    }
+
+    /** アプリをカバー画面上で起動し、邪魔にならないようオーバーレイを閉じる。 */
+    private fun launch(component: ComponentName) {
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setComponent(component)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        val options = ActivityOptions.makeBasic().setLaunchDisplayId(coverDisplayId)
+        runCatching { startActivity(intent, options.toBundle()) }
+            .onSuccess {
+                dismissedUntilReopen = true
+                hide()
+            }
+            .onFailure { Toast.makeText(this, "起動できませんでした: ${it.message}", Toast.LENGTH_LONG).show() }
     }
 
     private fun hide() {

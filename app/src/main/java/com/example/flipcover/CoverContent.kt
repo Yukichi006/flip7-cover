@@ -1,5 +1,6 @@
 package com.example.flipcover
 
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -18,15 +19,19 @@ import android.view.TextureView
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextClock
+import java.util.Calendar
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
 /** カバー画面とプレビューで共通に使う表示内容を組み立てる。 */
 object CoverContent {
 
-    fun create(context: Context, prefs: Prefs): FrameLayout {
+    /** [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。 */
+    fun create(context: Context, prefs: Prefs, onLaunch: ((ComponentName) -> Unit)? = null): FrameLayout {
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val content: View = when (prefs.mode) {
             Mode.AURORA -> AuroraView(context)
@@ -37,16 +42,46 @@ object CoverContent {
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
         if (prefs.showClock) {
-            val clock = TextClock(context).apply {
-                format12Hour = "H:mm"
-                format24Hour = "H:mm"
-                setTextColor(Color.WHITE)
-                textSize = 48f
-                setShadowLayer(12f, 0f, 0f, Color.BLACK)
+            if (prefs.analogClock) {
+                val size = context.dp(150)
+                root.addView(AnalogClockView(context), FrameLayout.LayoutParams(size, size, Gravity.CENTER))
+            } else {
+                val clock = TextClock(context).apply {
+                    format12Hour = "H:mm"
+                    format24Hour = "H:mm"
+                    setTextColor(Color.WHITE)
+                    textSize = 48f
+                    setShadowLayer(12f, 0f, 0f, Color.BLACK)
+                }
+                root.addView(clock, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
             }
-            root.addView(clock, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+
+        val apps = appRow(context, prefs.apps, onLaunch)
+        if (apps != null) {
+            root.addView(apps, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = context.dp(24)
+            })
         }
         return root
+    }
+
+    private fun appRow(context: Context, apps: List<ComponentName>, onLaunch: ((ComponentName) -> Unit)?): View? {
+        val pm = context.packageManager
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        for (cn in apps) {
+            // アンインストール済みのアプリは飛ばす
+            val icon = runCatching { pm.getActivityIcon(cn) }.getOrNull() ?: continue
+            val iv = ImageView(context).apply {
+                setImageDrawable(icon)
+                contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
+                val pad = context.dp(6)
+                setPadding(pad, pad, pad, pad)
+                setOnClickListener { onLaunch?.invoke(cn) }
+            }
+            row.addView(iv, LinearLayout.LayoutParams(context.dp(56), context.dp(56)))
+        }
+        return if (row.childCount > 0) row else null
     }
 
     private fun gifView(context: Context, uri: Uri): View {
@@ -62,6 +97,55 @@ object CoverContent {
             }
         }
         return iv
+    }
+}
+
+private fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+/** 文字盤と針を描くアナログ時計。 */
+class AnalogClockView(context: Context) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        strokeCap = Paint.Cap.ROUND
+        setShadowLayer(8f, 0f, 0f, Color.BLACK)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val cx = width / 2f
+        val cy = height / 2f
+        val r = min(cx, cy) * 0.92f
+
+        // 目盛り（5分ごとに太く）
+        for (i in 0 until 60) {
+            val a = Math.toRadians(i * 6.0)
+            val major = i % 5 == 0
+            paint.strokeWidth = if (major) r * 0.045f else r * 0.018f
+            val inner = if (major) r * 0.82f else r * 0.9f
+            canvas.drawLine(
+                cx + inner * sin(a).toFloat(), cy - inner * cos(a).toFloat(),
+                cx + r * sin(a).toFloat(), cy - r * cos(a).toFloat(), paint,
+            )
+        }
+
+        val now = Calendar.getInstance()
+        val sec = now.get(Calendar.SECOND) + now.get(Calendar.MILLISECOND) / 1000f
+        val minute = now.get(Calendar.MINUTE) + sec / 60f
+        val hour = now.get(Calendar.HOUR) + minute / 60f
+        hand(canvas, cx, cy, hour * 30f, r * 0.5f, r * 0.07f, Color.WHITE)
+        hand(canvas, cx, cy, minute * 6f, r * 0.75f, r * 0.05f, Color.WHITE)
+        hand(canvas, cx, cy, sec * 6f, r * 0.85f, r * 0.02f, 0xFFF472B6.toInt())
+        paint.color = Color.WHITE
+        canvas.drawCircle(cx, cy, r * 0.05f, paint)
+
+        // 秒針を滑らかに動かしつつ、毎フレームは描かない
+        postInvalidateDelayed(100)
+    }
+
+    private fun hand(canvas: Canvas, cx: Float, cy: Float, deg: Float, len: Float, w: Float, c: Int) {
+        val a = Math.toRadians(deg.toDouble())
+        paint.color = c
+        paint.strokeWidth = w
+        canvas.drawLine(cx, cy, cx + len * sin(a).toFloat(), cy - len * cos(a).toFloat(), paint)
     }
 }
 

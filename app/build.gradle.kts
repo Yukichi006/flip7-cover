@@ -11,8 +11,21 @@ android {
         applicationId = "com.example.flipcover"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
+        // CI の実行番号を使い、更新のたびに大きくなるようにする
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toInt() ?: 1
         versionName = "1.0"
+    }
+
+    signingConfigs {
+        // CI では Secrets の固定鍵で署名し、上書き更新できるようにする
+        getByName("debug") {
+            System.getenv("FLIPCOVER_KEYSTORE")?.let {
+                storeFile = file(it)
+                storePassword = System.getenv("FLIPCOVER_KEYSTORE_PASSWORD")
+                keyAlias = "flipcover"
+                keyPassword = System.getenv("FLIPCOVER_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
