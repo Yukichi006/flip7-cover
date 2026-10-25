@@ -6,7 +6,8 @@ import android.net.Uri
 
 enum class Mode { AURORA, PARTICLES, GIF, VIDEO, EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
 
-enum class ClockStyle(val label: String) {
+/** [dotVariant] があるものは、背景のドットで描く時計。 */
+enum class ClockStyle(val label: String, val dotVariant: DotClockView.Variant? = null) {
     DIGITAL("デジタル"),
     BOLD("ボールド（秒・日付つき）"),
     SIMPLE("シンプル"),
@@ -15,9 +16,9 @@ enum class ClockStyle(val label: String) {
     ROMAN("ローマ数字"),
     NEON("ネオン"),
     DOTS("ドット"),
-    DOT_MATRIX("ドットマトリクス"),
-    DOT_RING("ドットリング"),
-    DOT_HANDS("ドットハンド"),
+    DOT_MATRIX("ドットマトリクス（背景と一体）", DotClockView.Variant.MATRIX),
+    DOT_RING("ドットリング（背景と一体）", DotClockView.Variant.RING),
+    DOT_HANDS("ドットハンド（背景と一体）", DotClockView.Variant.HANDS),
 }
 
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */

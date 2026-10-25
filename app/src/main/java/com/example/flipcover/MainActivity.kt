@@ -23,11 +23,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var modeGroup: RadioGroup
 
     private val pickGif = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) { keep(uri); prefs.gifUri = uri; prefs.mode = Mode.GIF }
+        if (uri != null) { keep(uri); prefs.gifUri = uri; setMode(Mode.GIF) }
         refresh()
     }
     private val pickVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) { keep(uri); prefs.videoUri = uri; prefs.mode = Mode.VIDEO }
+        if (uri != null) { keep(uri); prefs.videoUri = uri; setMode(Mode.VIDEO) }
         refresh()
     }
 
@@ -77,20 +77,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
-        findViewById<TextView>(R.id.modeEarth).setOnClickListener { prefs.mode = Mode.EARTH; refresh() }
-        findViewById<TextView>(R.id.modeMoon).setOnClickListener { prefs.mode = Mode.MOON; refresh() }
-        findViewById<TextView>(R.id.modeDotSeconds).setOnClickListener { prefs.mode = Mode.DOT_SECONDS; refresh() }
-        findViewById<TextView>(R.id.modeLevelMeter).setOnClickListener { prefs.mode = Mode.LEVEL_METER; refresh() }
-        findViewById<TextView>(R.id.modeDotWave).setOnClickListener { prefs.mode = Mode.DOT_WAVE; refresh() }
-        findViewById<TextView>(R.id.modeSequencer).setOnClickListener { prefs.mode = Mode.SEQUENCER; refresh() }
-        findViewById<TextView>(R.id.modeDotClock).setOnClickListener {
-            prefs.mode = Mode.DOT_CLOCK
-            // ドットで針を描くので、小さいと針が数個のドットにしかならない。最初は大きめにする
-            if (prefs.clockSize < 0.6f) prefs.clockSize = 0.8f
-            refresh()
-        }
-        findViewById<TextView>(R.id.modeAurora).setOnClickListener { prefs.mode = Mode.AURORA; refresh() }
-        findViewById<TextView>(R.id.modeParticles).setOnClickListener { prefs.mode = Mode.PARTICLES; refresh() }
+        findViewById<TextView>(R.id.modeEarth).setOnClickListener { setMode(Mode.EARTH) }
+        findViewById<TextView>(R.id.modeMoon).setOnClickListener { setMode(Mode.MOON) }
+        findViewById<TextView>(R.id.modeDotSeconds).setOnClickListener { setMode(Mode.DOT_SECONDS) }
+        findViewById<TextView>(R.id.modeLevelMeter).setOnClickListener { setMode(Mode.LEVEL_METER) }
+        findViewById<TextView>(R.id.modeDotWave).setOnClickListener { setMode(Mode.DOT_WAVE) }
+        findViewById<TextView>(R.id.modeSequencer).setOnClickListener { setMode(Mode.SEQUENCER) }
+        findViewById<TextView>(R.id.modeDotClock).setOnClickListener { setMode(Mode.DOT_CLOCK) }
+        findViewById<TextView>(R.id.modeAurora).setOnClickListener { setMode(Mode.AURORA) }
+        findViewById<TextView>(R.id.modeParticles).setOnClickListener { setMode(Mode.PARTICLES) }
         findViewById<TextView>(R.id.modeGif).setOnClickListener { pickGif.launch(arrayOf("image/gif", "image/webp")) }
         findViewById<TextView>(R.id.modeVideo).setOnClickListener { pickVideo.launch(arrayOf("video/*")) }
     }
@@ -107,6 +102,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 背景を切り替える。ドット系の時計は背景と一体なので、時計と背景の組み合わせをそろえる。 */
+    private fun setMode(mode: Mode) {
+        if (mode == Mode.DOT_CLOCK) {
+            useDotClockBackground()
+            if (prefs.clockStyle.dotVariant == null) prefs.clockStyle = ClockStyle.DOT_MATRIX
+        } else {
+            prefs.mode = mode
+            if (prefs.clockStyle.dotVariant != null) {
+                prefs.clockStyle = ClockStyle.SIMPLE
+                toast("ドット系の時計は背景と一体のため、時計を「シンプル」に切り替えました")
+            }
+        }
+        refresh()
+    }
+
+    private fun useDotClockBackground() {
+        prefs.mode = Mode.DOT_CLOCK
+        // ドットで針を描くので、小さいと針が数個のドットにしかならない。最初は大きめにする
+        if (prefs.clockSize < 0.6f) prefs.clockSize = 0.8f
+    }
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
     private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"
 
     private fun pickClockStyle() {
@@ -115,6 +133,14 @@ class MainActivity : AppCompatActivity() {
             .setTitle("時計のデザイン")
             .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.clockStyle)) { dialog, i ->
                 prefs.clockStyle = styles[i]
+                // ドット系の時計は背景と一体なので、背景もそろえる
+                if (styles[i].dotVariant != null && prefs.mode != Mode.DOT_CLOCK) {
+                    useDotClockBackground()
+                    toast("背景を「ドット時計」に切り替えました")
+                } else if (styles[i].dotVariant == null && prefs.mode == Mode.DOT_CLOCK) {
+                    prefs.mode = Mode.DOT_WAVE
+                    toast("背景を「ドットウェーブ」に切り替えました")
+                }
                 refresh()
                 dialog.dismiss()
             }

@@ -9,6 +9,8 @@ import android.view.View
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -147,8 +149,7 @@ class DotWaveView(context: Context, speed: Float = 1f) : GearView(context, speed
 
 /**
  * ドットウェーブの中に、ドットだけでアナログ時計を浮かび上がらせる背景。
- * 針の上のドットが大きく明るくなり（時針は白、分針は黄）、目盛りの位置のドットが少し明るくなる。
- * 秒は、その位置に一番近いドットがオレンジに光る。
+ * 時計の形は [variant] で選ぶ。どれも時針は白、分針は黄、秒はオレンジのドットで表す。
  *
  * @param clockCx 時計の中心（px）
  * @param clockR 時計の半径（px）。0 なら針を描かず、ただのドットウェーブになる
@@ -158,10 +159,23 @@ class DotClockView(
     private val clockCx: Float,
     private val clockCy: Float,
     private val clockR: Float,
+    private val variant: Variant = Variant.MATRIX,
     speed: Float = 1f,
     private val boldMinute: Boolean = false,
     private val minuteTip: Boolean = false,
 ) : GearView(context, intervalMs = 125, speed = speed) {
+
+    enum class Variant {
+        /** 針の上のドットが膨らむ。目盛りの位置のドットが明るい。 */
+        MATRIX,
+
+        /** 外から秒・分の輪。経過した分だけ点き、今の位置はオレンジ。中に針。 */
+        RING,
+
+        /** 針が根元ほど太いドットの列になり、秒はオレンジのドットが尾を引いて回る。 */
+        HANDS,
+    }
+
     private val cols = 19
 
     override fun frame(canvas: Canvas, t: Float) {
@@ -176,27 +190,56 @@ class DotClockView(
         val minute = now.get(Calendar.MINUTE) + sec / 60f
         val hour = now.get(Calendar.HOUR) + minute / 60f
         val r = clockR
-        val minLen = if (boldMinute) 0.9f else 0.8f
-        val hx = handX(hour * 30f, r * 0.5f)
-        val hy = handY(hour * 30f, r * 0.5f)
+
+        val hourLen = if (variant == Variant.RING) 0.4f else 0.5f
+        val minLen = when {
+            variant == Variant.RING -> if (boldMinute) 0.62f else 0.58f
+            boldMinute -> 0.9f
+            else -> 0.8f
+        }
+        val hx = handX(hour * 30f, r * hourLen)
+        val hy = handY(hour * 30f, r * hourLen)
         val mx = handX(minute * 6f, r * minLen)
         val my = handY(minute * 6f, r * minLen)
 
-        // 目盛り・秒・分針の先に当たるドット（一番近いもの）を先に求めておく
         fun nearest(x: Float, y: Float): Int {
             val i = (x / gap - 1 + 0.5f).toInt().coerceIn(0, cols - 1)
             val j = ((y - oy) / gap + 0.5f).toInt().coerceIn(0, max(rows - 1, 0))
             return j * cols + i
         }
-        val marks = HashMap<Int, Boolean>()
-        if (r > 0f) for (k in 0 until 12) {
-            marks[nearest(clockCx + handX(k * 30f, r), clockCy + handY(k * 30f, r))] = k % 3 == 0
-        }
-        val secDot = if (r > 0f) nearest(clockCx + handX(sec * 6f, r), clockCy + handY(sec * 6f, r)) else -1
-        val tipDot = if (r > 0f && minuteTip) nearest(clockCx + mx, clockCy + my) else -1
-        val rimDot = if (r > 0f && minuteTip) nearest(clockCx + handX(minute * 6f, r * 1.12f),
-            clockCy + handY(minute * 6f, r * 1.12f)) else -1
+        fun nearestOnClock(deg: Float, dist: Float) = nearest(clockCx + handX(deg, dist), clockCy + handY(deg, dist))
 
+        // 特定の位置に当たるドット（一番近いもの）を先に決めておく。後から書いたものが優先
+        val special = HashMap<Int, Special>()
+        if (r > 0f) {
+            when (variant) {
+                Variant.MATRIX -> {
+                    for (k in 0 until 12) special[nearestOnClock(k * 30f, r)] =
+                        if (k % 3 == 0) Special(Gear.ON, 230f, 0.22f) else Special(Gear.ON, 160f, 0.16f)
+                    special[nearestOnClock(sec * 6f, r)] = Special(Gear.ORANGE, 255f, 0.3f)
+                }
+                Variant.RING -> {
+                    special[nearestOnClock(minute * 6f, r * RING_RADII[1])] = Special(Gear.ORANGE, 255f, 0.28f)
+                    special[nearestOnClock(sec * 6f, r * RING_RADII[0])] = Special(Gear.ORANGE, 255f, 0.28f)
+                }
+                Variant.HANDS -> {
+                    for (k in 0 until 12) special[nearestOnClock(k * 30f, r * 0.96f)] =
+                        if (k % 3 == 0) Special(Gear.ON, 235f, 0.22f) else Special(Gear.GRAY, 200f, 0.14f)
+                    // 尾は古い方から書き、今の秒のドットが最後に上書きする
+                    for (k in 5 downTo 0) {
+                        val fade = 1f - k / 6f
+                        special[nearestOnClock(sec * 6f - k * 8f, r * 0.84f)] =
+                            Special(Gear.ORANGE, 60f + 195f * fade * fade, 0.14f + 0.16f * fade)
+                    }
+                }
+            }
+            if (minuteTip) {
+                special[nearest(clockCx + mx, clockCy + my)] = Special(Gear.YELLOW, 255f, 0.36f)
+                if (variant != Variant.RING) special[nearestOnClock(minute * 6f, r * 1.12f)] = Special(Gear.YELLOW, 220f, 0.2f)
+            }
+        }
+
+        val fractions = floatArrayOf(sec / 60f, minute / 60f)
         for (j in 0 until rows) for (i in 0 until cols) {
             val x = gap * (i + 1)
             val y = oy + j * gap
@@ -210,21 +253,39 @@ class DotClockView(
             if (r > 0f) {
                 val px = x - clockCx
                 val py = y - clockCy
-                val hHit = bump(segmentDistance(px, py, hx, hy), gap * 0.9f)
-                val mHit = bump(segmentDistance(px, py, mx, my), gap * (if (boldMinute) 0.8f else 0.55f))
+
+                if (variant == Variant.RING) {
+                    // 輪の上のドットは、経過した範囲だけ明るくする。まだのところは背景のまま
+                    val d = hypot(px, py)
+                    val angle = ((atan2(px, -py) / (2 * PI)).toFloat() + 1f) % 1f
+                    for (k in RING_RADII.indices) {
+                        if (kotlin.math.abs(d - r * RING_RADII[k]) < gap * 0.45f && angle <= fractions[k]) {
+                            alpha = 190f
+                            radius = gap * 0.17f
+                        }
+                    }
+                }
+
+                val hp = projection(px, py, hx, hy)
+                val mp = projection(px, py, mx, my)
+                val hHit = bump(segmentDistance(px, py, hx, hy, hp), gap * 0.9f)
+                val mHit = bump(segmentDistance(px, py, mx, my, mp), gap * (if (boldMinute) 0.8f else 0.55f))
+                // HANDS は根元ほど太く、先へ行くほど細くする
+                val taper = if (variant == Variant.HANDS) {
+                    if (mHit > hHit) 1.15f - 0.55f * mp else 1.15f - 0.55f * hp
+                } else 1f
                 val k = max(hHit, mHit)
                 if (k > 0.05f) {
                     color = if (mHit > hHit) Gear.YELLOW else Gear.ON
                     alpha = max(alpha, 80 + 175 * k)
-                    radius = max(radius, gap * (0.12f + 0.28f * k))
+                    radius = max(radius, gap * (0.12f + 0.28f * k) * taper)
                 }
-                marks[idx]?.let { quarter ->
-                    alpha = max(alpha, if (quarter) 230f else 160f)
-                    radius = max(radius, gap * (if (quarter) 0.22f else 0.16f))
+                special[idx]?.let {
+                    color = it.color
+                    alpha = max(alpha, it.alpha)
+                    radius = max(radius, gap * it.size)
+                    if (it.color == Gear.ORANGE) { alpha = it.alpha; radius = gap * it.size }
                 }
-                if (idx == tipDot) { color = Gear.YELLOW; alpha = 255f; radius = gap * 0.36f }
-                if (idx == rimDot) { color = Gear.YELLOW; alpha = 220f; radius = max(radius, gap * 0.2f) }
-                if (idx == secDot) { color = Gear.ORANGE; alpha = 255f; radius = gap * 0.3f }
             }
             paint.color = color
             paint.alpha = alpha.toInt().coerceIn(0, 255)
@@ -233,19 +294,28 @@ class DotClockView(
         paint.alpha = 255
     }
 
+    private class Special(val color: Int, val alpha: Float, val size: Float)
+
     private fun handX(deg: Float, len: Float) = (sin(Math.toRadians(deg.toDouble())) * len).toFloat()
     private fun handY(deg: Float, len: Float) = (-cos(Math.toRadians(deg.toDouble())) * len).toFloat()
 
-    private fun segmentDistance(x: Float, y: Float, tx: Float, ty: Float): Float {
+    /** 原点から (tx, ty) への線分上で、点 (x, y) に一番近い位置（0〜1）。 */
+    private fun projection(x: Float, y: Float, tx: Float, ty: Float): Float {
         val len2 = tx * tx + ty * ty
-        if (len2 == 0f) return hypot(x, y)
-        val p = ((x * tx + y * ty) / len2).coerceIn(0f, 1f)
-        return hypot(x - tx * p, y - ty * p)
+        return if (len2 == 0f) 0f else ((x * tx + y * ty) / len2).coerceIn(0f, 1f)
     }
+
+    private fun segmentDistance(x: Float, y: Float, tx: Float, ty: Float, p: Float) =
+        hypot(x - tx * p, y - ty * p)
 
     private fun bump(d: Float, width: Float): Float {
         val q = d / width
         return exp(-q * q)
+    }
+
+    private companion object {
+        /** RING の秒・分の輪の半径（時計の半径に対する割合）。 */
+        val RING_RADII = floatArrayOf(0.95f, 0.72f)
     }
 }
 

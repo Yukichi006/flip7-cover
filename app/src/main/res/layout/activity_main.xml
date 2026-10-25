@@ -105,13 +105,13 @@
             android:id="@+id/boldMinuteSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="分針を太く長くする（ドット系）" />
+            android:text="分針を太く長くする（ドット系の時計）" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/minuteTipSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="分針の先に丸と外周の印を付ける（ドット系）" />
+            android:text="分針の先に丸と外周の印を付ける（ドット系の時計）" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/digitalSwitch"

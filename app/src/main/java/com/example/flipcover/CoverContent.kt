@@ -27,9 +27,6 @@ import android.widget.LinearLayout
 import android.widget.TextClock
 import java.util.Calendar
 import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
@@ -65,7 +62,9 @@ object CoverContent {
         val h = size.height
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val speed = prefs.animSpeed
-        val content: View = when (prefs.mode) {
+        // ドット系の時計は、背景のドットで描く（背景の選択より優先する）
+        val integrated = prefs.mode == Mode.DOT_CLOCK || prefs.clockStyle.dotVariant != null
+        val content: View = if (integrated) dotClock(context, prefs, size) else when (prefs.mode) {
             Mode.AURORA -> AuroraView(context, speed)
             Mode.PARTICLES -> ParticlesView(context, speed)
             Mode.GIF -> prefs.gifUri?.let { gifView(context, it) } ?: AuroraView(context, speed)
@@ -77,18 +76,11 @@ object CoverContent {
             Mode.LEVEL_METER -> LevelMeterView(context, speed)
             Mode.DOT_WAVE -> DotWaveView(context, speed)
             Mode.SEQUENCER -> SequencerView(context, speed)
-            Mode.DOT_CLOCK -> {
-                // 時計の位置はほかの部品と同じく画面内に収めた値を使う
-                val box = (prefs.clockSize * w).toInt()
-                val lp = place(size, prefs.clockX, prefs.clockY, box, box)
-                val r = if (prefs.showClock) box / 2f else 0f
-                DotClockView(context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r,
-                    speed, prefs.boldMinute, prefs.minuteTip)
-            }
+            Mode.DOT_CLOCK -> dotClock(context, prefs, size)
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
-        if (prefs.showClock && prefs.mode == Mode.DOT_CLOCK) {
+        if (prefs.showClock && integrated) {
             // 時計は背景が描くので、ここにはドラッグで動かすための透明な部品だけ置く
             val box = (prefs.clockSize * w).toInt()
             val handle = ClockHandle(context, editing).apply { tag = TAG_CLOCK }
@@ -99,7 +91,7 @@ object CoverContent {
             val (clock, boxH) = if (style == ClockStyle.BOLD) {
                 BoldClockView(context) to (box * 0.6f).toInt()
             } else if (style != ClockStyle.DIGITAL) {
-                AnalogClockView(context, style, prefs.boldMinute, prefs.minuteTip) to box
+                AnalogClockView(context, style) to box
             } else {
                 TextClock(context).apply {
                     format12Hour = "H:mm"
@@ -126,6 +118,18 @@ object CoverContent {
             root.addView(row, place(size, prefs.appsX, prefs.appsY, row.childCount * icon, icon))
         }
         return root
+    }
+
+    /** 背景と一体のドット時計。時計の位置はほかの部品と同じく画面内に収めた値を使う。 */
+    private fun dotClock(context: Context, prefs: Prefs, size: Size): View {
+        val box = (prefs.clockSize * size.width).toInt()
+        val lp = place(size, prefs.clockX, prefs.clockY, box, box)
+        val r = if (prefs.showClock) box / 2f else 0f
+        return DotClockView(
+            context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r,
+            prefs.clockStyle.dotVariant ?: DotClockView.Variant.MATRIX,
+            prefs.animSpeed, prefs.boldMinute, prefs.minuteTip,
+        )
     }
 
     /** ぼかした背景の分だけ枠を広げて [view] をその中央に置き、ドラッグ用の [tag] を付けて配置する。 */
@@ -214,14 +218,7 @@ class SoftBackdrop(context: Context) : View(context) {
 }
 
 /** 文字盤と針を描くアナログ時計。[style] でデザインを切り替える。 */
-class AnalogClockView(
-    context: Context,
-    private val style: ClockStyle,
-    /** ドット系の時計で、分針を太く長くする。 */
-    private val boldMinute: Boolean = false,
-    /** ドット系の時計で、分針の先に丸、外周に指している位置の印を付ける。 */
-    private val minuteTip: Boolean = false,
-) : View(context) {
+class AnalogClockView(context: Context, private val style: ClockStyle) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
 
@@ -280,9 +277,6 @@ class AnalogClockView(
                 hands(canvas, cx, cy, r, hour, minute, sec, r * 0.08f, r * 0.055f, Color.WHITE, 0xFFFACC15.toInt())
                 dot(canvas, cx, cy, sec * 6f, r * 0.7f, r * 0.04f, 0xFFFACC15.toInt())
             }
-            ClockStyle.DOT_MATRIX -> dotMatrix(canvas, cx, cy, r, hour, minute, sec)
-            ClockStyle.DOT_RING -> dotRing(canvas, cx, cy, r, hour, minute, sec)
-            ClockStyle.DOT_HANDS -> dotHands(canvas, cx, cy, r, hour, minute, sec)
             else -> {
                 shadow(r * 0.03f, Color.BLACK)
                 ticks(canvas, cx, cy, r, major = 0.82f, minor = 0.9f, majorW = 0.045f, minorW = 0.018f, color = Color.WHITE)
@@ -292,127 +286,6 @@ class AnalogClockView(
 
         // 秒針が動いて見える程度に、描き直しは控えめにする
         postInvalidateDelayed(250)
-    }
-
-    /** 丸く並べたドットのうち、針の上にあるものほど大きく明るくして針を浮かび上がらせる。 */
-    private fun dotMatrix(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
-        shadow(0f, Color.TRANSPARENT)
-        paint.style = Paint.Style.FILL
-        val n = 19
-        val g = r * 2 / n
-        val ha = Math.toRadians(hour * 30.0)
-        val ma = Math.toRadians(minute * 6.0)
-        val hx = sin(ha).toFloat() * r * 0.5f
-        val hy = -cos(ha).toFloat() * r * 0.5f
-        val minLen = if (boldMinute) 0.9f else 0.82f
-        val mx = sin(ma).toFloat() * r * minLen
-        val my = -cos(ma).toFloat() * r * minLen
-        for (j in 0 until n) for (i in 0 until n) {
-            val x = (i - (n - 1) / 2f) * g
-            val y = (j - (n - 1) / 2f) * g
-            if (x * x + y * y > (r * 0.92f) * (r * 0.92f)) continue
-            val hourHit = bump(segmentDistance(x, y, hx, hy), g * 0.95f)
-            val minHit = bump(segmentDistance(x, y, mx, my), g * (if (boldMinute) 0.8f else 0.6f)) * 0.9f
-            val v = max(hourHit, minHit)
-            // 近い方の針の色に染める
-            paint.color = if (minHit > hourHit) MINUTE_COLOR else HOUR_COLOR
-            paint.alpha = (30 + 160 * v).toInt()
-            canvas.drawCircle(cx + x, cy + y, g * (0.1f + 0.3f * v), paint)
-        }
-        paint.alpha = 255
-        solidHands(canvas, cx, cy, r, hour, minute, g * 0.55f,
-            minW = if (boldMinute) g * 0.6f else g * 0.32f, minLen = minLen, rimAt = 1f)
-        dot(canvas, cx, cy, sec * 6f, r * 0.99f, g * 0.3f, Gear.ORANGE)
-    }
-
-    /** 外から秒・分・時の 3 重のドットの輪。経過した分だけ点き、今の位置はオレンジ。 */
-    private fun dotRing(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
-        shadow(0f, Color.TRANSPARENT)
-        dotRow(canvas, cx, cy, r * 0.95f, r * 0.02f, 60, sec.toInt())
-        dotRow(canvas, cx, cy, r * 0.74f, r * 0.024f, 60, minute.toInt())
-        dotRow(canvas, cx, cy, r * 0.5f, r * 0.05f, 12, hour.toInt() % 12)
-        // 分の輪（0.74r）にかからない長さまで伸ばす。外周の印は分の輪のオレンジが兼ねる
-        solidHands(canvas, cx, cy, r, hour, minute, r * 0.06f,
-            minW = if (boldMinute) r * 0.065f else r * 0.035f,
-            hourLen = 0.36f, minLen = if (boldMinute) 0.7f else 0.64f)
-    }
-
-    private fun dotRow(canvas: Canvas, cx: Float, cy: Float, radius: Float, size: Float, count: Int, now: Int) {
-        for (i in 0 until count) {
-            val (color, s) = when {
-                i < now -> Gear.ON to size
-                i == now -> Gear.ORANGE to size * 1.4f
-                else -> Gear.OFF to size * 0.7f
-            }
-            dot(canvas, cx, cy, i * 360f / count, radius, s, color)
-        }
-    }
-
-    /** 針を先へ行くほど小さくなるドットの列で描き、秒はオレンジのドットが尾を引いて回る。 */
-    private fun dotHands(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
-        shadow(0f, Color.TRANSPARENT)
-        for (i in 0 until 12) {
-            val quarter = i % 3 == 0
-            dot(canvas, cx, cy, i * 30f, r * 0.94f, r * (if (quarter) 0.045f else 0.025f),
-                if (quarter) Gear.ON else Gear.GRAY)
-        }
-        // ドットの下に細い線を通して、針として一続きに見えるようにする
-        line(canvas, cx, cy, hour * 30f, 0f, r * 0.5f, r * 0.03f, HOUR_COLOR and 0x00FFFFFF or 0x99000000.toInt())
-        val minLen = if (boldMinute) 0.88f else 0.78f
-        val minScale = if (boldMinute) 1.5f else 1f
-        line(canvas, cx, cy, minute * 6f, 0f, r * minLen, r * 0.02f * minScale,
-            MINUTE_COLOR and 0x00FFFFFF or 0x99000000.toInt())
-        for (k in 0 until 6) {
-            val f = (k + 1) / 6f
-            dot(canvas, cx, cy, hour * 30f, r * 0.5f * f, r * (0.075f - 0.03f * f), HOUR_COLOR)
-        }
-        for (k in 0 until 9) {
-            val f = (k + 1) / 9f
-            dot(canvas, cx, cy, minute * 6f, r * minLen * f, r * (0.055f - 0.025f * f) * minScale, MINUTE_COLOR)
-        }
-        if (minuteTip) {
-            dot(canvas, cx, cy, minute * 6f, r * minLen, r * 0.06f, MINUTE_COLOR)
-            dot(canvas, cx, cy, minute * 6f, r * 1.0f, r * 0.022f, MINUTE_COLOR)
-        }
-        for (k in 7 downTo 0) {
-            val fade = 1f - k / 8f
-            paint.alpha = 255
-            dot(canvas, cx, cy, sec * 6f - k * 4f, r * 0.84f, r * 0.04f * (0.4f + 0.6f * fade),
-                Gear.ORANGE and 0x00FFFFFF or ((fade * fade * 255).toInt() shl 24))
-        }
-        dot(canvas, cx, cy, 0f, 0f, r * 0.05f, Gear.ON)
-    }
-
-    /**
-     * 時針（オフホワイト）と分針（黄色）を実線で描く。
-     * [minuteTip] のときは分針の先に丸を付け、[rimAt]（0 なら付けない）の距離に印を出す。
-     */
-    private fun solidHands(
-        canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float,
-        hourW: Float, minW: Float, hourLen: Float = 0.5f, minLen: Float = 0.82f, rimAt: Float = 0f,
-    ) {
-        line(canvas, cx, cy, hour * 30f, 0f, r * hourLen, hourW, HOUR_COLOR)
-        line(canvas, cx, cy, minute * 6f, 0f, r * minLen, minW, MINUTE_COLOR)
-        if (minuteTip) {
-            dot(canvas, cx, cy, minute * 6f, r * minLen, max(hourW * 0.78f, minW * 0.9f), MINUTE_COLOR)
-            if (rimAt > 0f) dot(canvas, cx, cy, minute * 6f, r * rimAt, hourW * 0.33f, MINUTE_COLOR)
-        }
-        paint.style = Paint.Style.FILL
-        paint.color = HOUR_COLOR
-        canvas.drawCircle(cx, cy, hourW * 0.9f, paint)
-    }
-
-    /** 原点から (tx, ty) までの線分と点 (x, y) の距離。 */
-    private fun segmentDistance(x: Float, y: Float, tx: Float, ty: Float): Float {
-        val len2 = tx * tx + ty * ty
-        val t = ((x * tx + y * ty) / len2).coerceIn(0f, 1f)
-        return hypot(x - tx * t, y - ty * t)
-    }
-
-    /** 距離 0 で 1、[width] 離れるとほぼ 0 になるなめらかな山。 */
-    private fun bump(d: Float, width: Float): Float {
-        val q = d / width
-        return exp(-q * q)
     }
 
     private fun shadow(radius: Float, color: Int) {
@@ -483,10 +356,6 @@ class AnalogClockView(
 
     private companion object {
         val ARABIC = Array(12) { (it + 1).toString() }
-        /** ドット系の時計の針の色。時針と分針を見分けやすくする。 */
-        val HOUR_COLOR = Gear.ON
-        val MINUTE_COLOR = Gear.YELLOW
-
         val ROMAN_NUMERALS = arrayOf("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
     }
 }
