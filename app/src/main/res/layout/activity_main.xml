@@ -54,6 +54,14 @@
                 android:layout_height="wrap_content" android:text="地球（宇宙）" />
             <RadioButton android:id="@+id/modeMoon" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="月（宇宙）" />
+            <RadioButton android:id="@+id/modeDotSeconds" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="ドット秒（機材風）" />
+            <RadioButton android:id="@+id/modeLevelMeter" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="レベルメーター（機材風）" />
+            <RadioButton android:id="@+id/modeDotWave" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="ドットウェーブ（機材風）" />
+            <RadioButton android:id="@+id/modeSequencer" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="シーケンサー（機材風）" />
             <RadioButton android:id="@+id/modeAurora" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="オーロラ（内蔵）" />
             <RadioButton android:id="@+id/modeParticles" android:layout_width="wrap_content"

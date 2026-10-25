@@ -55,6 +55,10 @@ class MainActivity : AppCompatActivity() {
         // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
         findViewById<TextView>(R.id.modeEarth).setOnClickListener { prefs.mode = Mode.EARTH; refresh() }
         findViewById<TextView>(R.id.modeMoon).setOnClickListener { prefs.mode = Mode.MOON; refresh() }
+        findViewById<TextView>(R.id.modeDotSeconds).setOnClickListener { prefs.mode = Mode.DOT_SECONDS; refresh() }
+        findViewById<TextView>(R.id.modeLevelMeter).setOnClickListener { prefs.mode = Mode.LEVEL_METER; refresh() }
+        findViewById<TextView>(R.id.modeDotWave).setOnClickListener { prefs.mode = Mode.DOT_WAVE; refresh() }
+        findViewById<TextView>(R.id.modeSequencer).setOnClickListener { prefs.mode = Mode.SEQUENCER; refresh() }
         findViewById<TextView>(R.id.modeAurora).setOnClickListener { prefs.mode = Mode.AURORA; refresh() }
         findViewById<TextView>(R.id.modeParticles).setOnClickListener { prefs.mode = Mode.PARTICLES; refresh() }
         findViewById<TextView>(R.id.modeGif).setOnClickListener { pickGif.launch(arrayOf("image/gif", "image/webp")) }
@@ -119,6 +123,10 @@ class MainActivity : AppCompatActivity() {
                 Mode.VIDEO -> R.id.modeVideo
                 Mode.EARTH -> R.id.modeEarth
                 Mode.MOON -> R.id.modeMoon
+                Mode.DOT_SECONDS -> R.id.modeDotSeconds
+                Mode.LEVEL_METER -> R.id.modeLevelMeter
+                Mode.DOT_WAVE -> R.id.modeDotWave
+                Mode.SEQUENCER -> R.id.modeSequencer
             }
         )
         findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"

@@ -63,13 +63,19 @@ object CoverContent {
             Mode.VIDEO -> prefs.videoUri?.let { LoopingVideoView(context, it) } ?: AuroraView(context)
             Mode.EARTH -> SpaceView(context, SpaceView.Planet.EARTH)
             Mode.MOON -> SpaceView(context, SpaceView.Planet.MOON)
+            Mode.DOT_SECONDS -> DotSecondsView(context)
+            Mode.LEVEL_METER -> LevelMeterView(context)
+            Mode.DOT_WAVE -> DotWaveView(context)
+            Mode.SEQUENCER -> SequencerView(context)
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
         if (prefs.showClock) {
             val box = (prefs.clockSize * w).toInt()
             val style = prefs.clockStyle
-            val (clock, boxH) = if (style != ClockStyle.DIGITAL) {
+            val (clock, boxH) = if (style == ClockStyle.BOLD) {
+                BoldClockView(context) to (box * 0.6f).toInt()
+            } else if (style != ClockStyle.DIGITAL) {
                 AnalogClockView(context, style) to box
             } else {
                 TextClock(context).apply {
