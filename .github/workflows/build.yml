@@ -41,3 +41,28 @@ jobs:
         with:
           name: flipcover-apk
           path: app/build/outputs/apk/debug/*.apk
+
+  # main の更新ごとに Releases へ APK を公開する（Obtainium がここから更新を取る）
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # 書き込み権限はリリースを作るこのジョブだけに与え、ビルドには渡さない
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: flipcover-apk
+      - name: Releases に APK を公開
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v1.0.${{ github.run_number }}
+        run: |
+          apk="flipcover-$TAG.apk"
+          mv app-debug.apk "$apk"
+          gh release create "$TAG" "$apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "FlipCover $TAG" \
+            --notes "SHA-256: $(sha256sum "$apk" | cut -d' ' -f1)"
