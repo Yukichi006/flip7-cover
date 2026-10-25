@@ -15,6 +15,9 @@ enum class ClockStyle(val label: String) {
     ROMAN("ローマ数字"),
     NEON("ネオン"),
     DOTS("ドット"),
+    DOT_MATRIX("ドットマトリクス"),
+    DOT_RING("ドットリング"),
+    DOT_HANDS("ドットハンド"),
 }
 
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */

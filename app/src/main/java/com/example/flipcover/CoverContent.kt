@@ -27,6 +27,9 @@ import android.widget.LinearLayout
 import android.widget.TextClock
 import java.util.Calendar
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
@@ -238,6 +241,9 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
                 hands(canvas, cx, cy, r, hour, minute, sec, r * 0.08f, r * 0.055f, Color.WHITE, 0xFFFACC15.toInt())
                 dot(canvas, cx, cy, sec * 6f, r * 0.7f, r * 0.04f, 0xFFFACC15.toInt())
             }
+            ClockStyle.DOT_MATRIX -> dotMatrix(canvas, cx, cy, r, hour, minute, sec)
+            ClockStyle.DOT_RING -> dotRing(canvas, cx, cy, r, hour, minute, sec)
+            ClockStyle.DOT_HANDS -> dotHands(canvas, cx, cy, r, hour, minute, sec)
             else -> {
                 shadow(r * 0.03f, Color.BLACK)
                 ticks(canvas, cx, cy, r, major = 0.82f, minor = 0.9f, majorW = 0.045f, minorW = 0.018f, color = Color.WHITE)
@@ -247,6 +253,90 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
 
         // 秒針が動いて見える程度に、描き直しは控えめにする
         postInvalidateDelayed(250)
+    }
+
+    /** 丸く並べたドットのうち、針の上にあるものほど大きく明るくして針を浮かび上がらせる。 */
+    private fun dotMatrix(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
+        shadow(0f, Color.TRANSPARENT)
+        paint.style = Paint.Style.FILL
+        val n = 15
+        val g = r * 2 / n
+        val ha = Math.toRadians(hour * 30.0)
+        val ma = Math.toRadians(minute * 6.0)
+        val hx = sin(ha).toFloat() * r * 0.5f
+        val hy = -cos(ha).toFloat() * r * 0.5f
+        val mx = sin(ma).toFloat() * r * 0.8f
+        val my = -cos(ma).toFloat() * r * 0.8f
+        for (j in 0 until n) for (i in 0 until n) {
+            val x = (i - (n - 1) / 2f) * g
+            val y = (j - (n - 1) / 2f) * g
+            if (x * x + y * y > (r * 0.9f) * (r * 0.9f)) continue
+            val hourHit = bump(segmentDistance(x, y, hx, hy), g * 0.75f)
+            val minHit = bump(segmentDistance(x, y, mx, my), g * 0.5f) * 0.9f
+            val v = max(hourHit, minHit)
+            paint.color = Gear.ON
+            paint.alpha = (45 + 210 * v).toInt()
+            canvas.drawCircle(cx + x, cy + y, g * (0.12f + 0.3f * v), paint)
+        }
+        paint.alpha = 255
+        dot(canvas, cx, cy, sec * 6f, r * 0.97f, g * 0.28f, Gear.ORANGE)
+    }
+
+    /** 外から秒・分・時の 3 重のドットの輪。経過した分だけ点き、今の位置はオレンジ。 */
+    private fun dotRing(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
+        shadow(0f, Color.TRANSPARENT)
+        dotRow(canvas, cx, cy, r * 0.95f, r * 0.02f, 60, sec.toInt())
+        dotRow(canvas, cx, cy, r * 0.74f, r * 0.024f, 60, minute.toInt())
+        dotRow(canvas, cx, cy, r * 0.5f, r * 0.05f, 12, hour.toInt() % 12)
+    }
+
+    private fun dotRow(canvas: Canvas, cx: Float, cy: Float, radius: Float, size: Float, count: Int, now: Int) {
+        for (i in 0 until count) {
+            val (color, s) = when {
+                i < now -> Gear.ON to size
+                i == now -> Gear.ORANGE to size * 1.4f
+                else -> Gear.OFF to size * 0.7f
+            }
+            dot(canvas, cx, cy, i * 360f / count, radius, s, color)
+        }
+    }
+
+    /** 針を先へ行くほど小さくなるドットの列で描き、秒はオレンジのドットが尾を引いて回る。 */
+    private fun dotHands(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
+        shadow(0f, Color.TRANSPARENT)
+        for (i in 0 until 12) {
+            val quarter = i % 3 == 0
+            dot(canvas, cx, cy, i * 30f, r * 0.94f, r * (if (quarter) 0.045f else 0.025f),
+                if (quarter) Gear.ON else Gear.GRAY)
+        }
+        for (k in 0 until 6) {
+            val f = (k + 1) / 6f
+            dot(canvas, cx, cy, hour * 30f, r * 0.5f * f, r * (0.075f - 0.03f * f), Gear.ON)
+        }
+        for (k in 0 until 9) {
+            val f = (k + 1) / 9f
+            dot(canvas, cx, cy, minute * 6f, r * 0.78f * f, r * (0.055f - 0.025f * f), Gear.ON)
+        }
+        for (k in 7 downTo 0) {
+            val fade = 1f - k / 8f
+            paint.alpha = 255
+            dot(canvas, cx, cy, sec * 6f - k * 4f, r * 0.84f, r * 0.04f * (0.4f + 0.6f * fade),
+                Gear.ORANGE and 0x00FFFFFF or ((fade * fade * 255).toInt() shl 24))
+        }
+        dot(canvas, cx, cy, 0f, 0f, r * 0.05f, Gear.ON)
+    }
+
+    /** 原点から (tx, ty) までの線分と点 (x, y) の距離。 */
+    private fun segmentDistance(x: Float, y: Float, tx: Float, ty: Float): Float {
+        val len2 = tx * tx + ty * ty
+        val t = ((x * tx + y * ty) / len2).coerceIn(0f, 1f)
+        return hypot(x - tx * t, y - ty * t)
+    }
+
+    /** 距離 0 で 1、[width] 離れるとほぼ 0 になるなめらかな山。 */
+    private fun bump(d: Float, width: Float): Float {
+        val q = d / width
+        return exp(-q * q)
     }
 
     private fun shadow(radius: Float, color: Int) {
