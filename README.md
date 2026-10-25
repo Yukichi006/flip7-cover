@@ -29,5 +29,6 @@ Galaxy Z Flip7 のカバー画面に、アニメーションを表示する自�
 - アニメーションの追加：`CoverContent.kt` に View を追加してください
 
 ## 画像のクレジット
-- 地球：NASA Visible Earth「Blue Marble」「Black Marble」（パブリックドメイン）。[three-globe](https://github.com/vasturiano/three-globe) 同梱の画像を縮小して使用
-- 月：NASA の Apollo 撮影写真（[NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources)「Moon」）を、表側の正距円筒図法に変換して使用
+- 地球の地表：NASA Visible Earth「Blue Marble」（パブリックドメイン）。[three-globe](https://github.com/vasturiano/three-globe) 同梱の画像を使用
+- 地球の雲：`tools/make_clouds.py` で生成したもの
+- 月：NASA の Apollo 撮影写真（[NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources)「Moon」）を、`tools/make_moon.py` で表側の正距円筒図法に変換して使用
