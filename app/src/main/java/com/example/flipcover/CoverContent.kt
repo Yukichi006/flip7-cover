@@ -259,27 +259,27 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
     private fun dotMatrix(canvas: Canvas, cx: Float, cy: Float, r: Float, hour: Float, minute: Float, sec: Float) {
         shadow(0f, Color.TRANSPARENT)
         paint.style = Paint.Style.FILL
-        val n = 15
+        val n = 19
         val g = r * 2 / n
         val ha = Math.toRadians(hour * 30.0)
         val ma = Math.toRadians(minute * 6.0)
         val hx = sin(ha).toFloat() * r * 0.5f
         val hy = -cos(ha).toFloat() * r * 0.5f
-        val mx = sin(ma).toFloat() * r * 0.8f
-        val my = -cos(ma).toFloat() * r * 0.8f
+        val mx = sin(ma).toFloat() * r * 0.82f
+        val my = -cos(ma).toFloat() * r * 0.82f
         for (j in 0 until n) for (i in 0 until n) {
             val x = (i - (n - 1) / 2f) * g
             val y = (j - (n - 1) / 2f) * g
-            if (x * x + y * y > (r * 0.9f) * (r * 0.9f)) continue
-            val hourHit = bump(segmentDistance(x, y, hx, hy), g * 0.75f)
-            val minHit = bump(segmentDistance(x, y, mx, my), g * 0.5f) * 0.9f
+            if (x * x + y * y > (r * 0.92f) * (r * 0.92f)) continue
+            val hourHit = bump(segmentDistance(x, y, hx, hy), g * 0.95f)
+            val minHit = bump(segmentDistance(x, y, mx, my), g * 0.6f) * 0.9f
             val v = max(hourHit, minHit)
             paint.color = Gear.ON
-            paint.alpha = (45 + 210 * v).toInt()
-            canvas.drawCircle(cx + x, cy + y, g * (0.12f + 0.3f * v), paint)
+            paint.alpha = (30 + 225 * v).toInt()
+            canvas.drawCircle(cx + x, cy + y, g * (0.1f + 0.32f * v), paint)
         }
         paint.alpha = 255
-        dot(canvas, cx, cy, sec * 6f, r * 0.97f, g * 0.28f, Gear.ORANGE)
+        dot(canvas, cx, cy, sec * 6f, r * 0.99f, g * 0.3f, Gear.ORANGE)
     }
 
     /** 外から秒・分・時の 3 重のドットの輪。経過した分だけ点き、今の位置はオレンジ。 */
