@@ -4,22 +4,14 @@ import android.content.ComponentName
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ImageDecoder
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.SurfaceTexture
-import android.graphics.drawable.AnimatedImageDrawable
-import android.media.MediaPlayer
-import android.net.Uri
 import android.util.Size
 import android.util.TypedValue
 import android.view.Display
 import android.view.Gravity
-import android.view.Surface
-import android.view.TextureView
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -29,7 +21,6 @@ import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
  * カバー画面とプレビューで共通に使う表示内容を組み立てる。
@@ -63,12 +54,8 @@ object CoverContent {
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val speed = prefs.animSpeed
         // ドット系の時計は、背景のドットで描く（背景の選択より優先する）
-        val integrated = prefs.mode == Mode.DOT_CLOCK || prefs.clockStyle.dotVariant != null
+        val integrated = prefs.mode == Mode.DOT_CLOCK || prefs.clockStyle.integrated
         val content: View = if (integrated) dotClock(context, prefs, size) else when (prefs.mode) {
-            Mode.AURORA -> AuroraView(context, speed)
-            Mode.PARTICLES -> ParticlesView(context, speed)
-            Mode.GIF -> prefs.gifUri?.let { gifView(context, it) } ?: AuroraView(context, speed)
-            Mode.VIDEO -> prefs.videoUri?.let { LoopingVideoView(context, it) } ?: AuroraView(context, speed)
             Mode.EARTH -> SpaceView(context, SpaceView.Planet.EARTH, speed)
             Mode.MOON -> SpaceView(context, SpaceView.Planet.MOON, speed)
             // ドット秒は時計そのものなので速さは変えない
@@ -125,6 +112,12 @@ object CoverContent {
         val box = (prefs.clockSize * size.width).toInt()
         val lp = place(size, prefs.clockX, prefs.clockY, box, box)
         val r = if (prefs.showClock) box / 2f else 0f
+        val cx = lp.leftMargin + box / 2f
+        val cy = lp.topMargin + box / 2f
+        prefs.clockStyle.dial?.let { pattern ->
+            return DotDialView(context, cx, cy, r, pattern, prefs.animSpeed,
+                prefs.taperHands, prefs.glow, prefs.boldMinute, prefs.minuteTip)
+        }
         return DotClockView(
             context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r,
             prefs.clockStyle.dotVariant ?: DotClockView.Variant.MATRIX,
@@ -176,21 +169,6 @@ object CoverContent {
             row.addView(iv, LinearLayout.LayoutParams(iconSize, iconSize))
         }
         return if (row.childCount > 0) row else null
-    }
-
-    private fun gifView(context: Context, uri: Uri): View {
-        val iv = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-        runCatching {
-            val drawable = ImageDecoder.decodeDrawable(
-                ImageDecoder.createSource(context.contentResolver, uri)
-            )
-            iv.setImageDrawable(drawable)
-            (drawable as? AnimatedImageDrawable)?.apply {
-                repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-                start()
-            }
-        }
-        return iv
     }
 }
 
@@ -358,112 +336,4 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
         val ARABIC = Array(12) { (it + 1).toString() }
         val ROMAN_NUMERALS = arrayOf("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
     }
-}
-
-/** ゆっくり動く色の光でオーロラ風の背景を描く。 */
-class AuroraView(context: Context, private val speed: Float = 1f) : View(context) {
-    private val colors = intArrayOf(0xFF7C3AED.toInt(), 0xFF06B6D4.toInt(), 0xFFEC4899.toInt(), 0xFF22C55E.toInt())
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val start = System.nanoTime()
-
-    override fun onDraw(canvas: Canvas) {
-        val t = (System.nanoTime() - start) / 1e9f * speed
-        val w = width.toFloat()
-        val h = height.toFloat()
-        canvas.drawColor(0xFF0B0B1A.toInt())
-        colors.forEachIndexed { i, c ->
-            val phase = i * 1.7f
-            val cx = w * (0.5f + 0.35f * sin(t * 0.12f + phase))
-            val cy = h * (0.5f + 0.35f * cos(t * 0.09f + phase * 1.3f))
-            val r = maxOf(w, h) * (0.45f + 0.1f * sin(t * 0.17f + phase))
-            paint.shader = RadialGradient(cx, cy, r, c and 0x99FFFFFF.toInt(), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, r, paint)
-        }
-        postInvalidateDelayed(66)
-    }
-}
-
-/** 光の粒がふわふわ上昇していくアニメーション。 */
-class ParticlesView(context: Context, private val speed: Float = 1f) : View(context) {
-    private class P(var x: Float, var y: Float, val r: Float, val speed: Float, val drift: Float, val hue: Float)
-
-    private val particles = mutableListOf<P>()
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var last = System.nanoTime()
-    private var time = 0f
-
-    private fun spawn(atBottom: Boolean) = P(
-        x = Random.nextFloat() * width,
-        y = if (atBottom) height + 20f else Random.nextFloat() * height,
-        r = 3f + Random.nextFloat() * 10f,
-        speed = 15f + Random.nextFloat() * 40f,
-        drift = Random.nextFloat() * 6.28f,
-        hue = 180f + Random.nextFloat() * 140f,
-    )
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        particles.clear()
-        repeat(70) { particles += spawn(atBottom = false) }
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        val now = System.nanoTime()
-        val dt = ((now - last) / 1e9f).coerceAtMost(0.2f) * speed
-        last = now
-        time += dt
-        canvas.drawColor(0xFF050510.toInt())
-        for (i in particles.indices) {
-            val p = particles[i]
-            p.y -= p.speed * dt
-            p.x += sin(time + p.drift) * 15f * dt
-            if (p.y < -20f) particles[i] = spawn(atBottom = true)
-            val alpha = (0.5f + 0.5f * sin(time * 0.8f + p.drift)).coerceIn(0.2f, 1f)
-            paint.color = Color.HSVToColor((alpha * 255).toInt(), floatArrayOf(p.hue, 0.6f, 1f))
-            paint.setShadowLayer(p.r * 2, 0f, 0f, paint.color)
-            canvas.drawCircle(p.x, p.y, p.r, paint)
-        }
-        postInvalidateDelayed(66)
-    }
-}
-
-/** 動画を無音ループ再生し、画面いっぱいにクロップ表示する。 */
-class LoopingVideoView(context: Context, private val uri: Uri) : TextureView(context),
-    TextureView.SurfaceTextureListener {
-    private var player: MediaPlayer? = null
-
-    init { surfaceTextureListener = this }
-
-    override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
-        player = MediaPlayer().apply {
-            runCatching {
-                setDataSource(context, uri)
-                setSurface(Surface(st))
-                isLooping = true
-                setVolume(0f, 0f)
-                setOnVideoSizeChangedListener { _, vw, vh -> applyCenterCrop(vw, vh) }
-                setOnPreparedListener { it.start() }
-                prepareAsync()
-            }
-        }
-    }
-
-    private fun applyCenterCrop(vw: Int, vh: Int) {
-        if (vw == 0 || vh == 0 || width == 0 || height == 0) return
-        val scale = maxOf(width.toFloat() / vw, height.toFloat() / vh)
-        val sx = vw * scale / width
-        val sy = vh * scale / height
-        setTransform(Matrix().apply { setScale(sx, sy, width / 2f, height / 2f) })
-    }
-
-    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {
-        player?.let { applyCenterCrop(it.videoWidth, it.videoHeight) }
-    }
-
-    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
-        player?.release()
-        player = null
-        return true
-    }
-
-    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
 }

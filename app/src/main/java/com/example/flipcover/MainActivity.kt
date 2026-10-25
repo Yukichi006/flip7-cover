@@ -3,7 +3,6 @@ package com.example.flipcover
 import android.content.ComponentName
 import android.content.Intent
 import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Display
@@ -11,7 +10,6 @@ import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -21,15 +19,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var editor: PreviewEditor
     private lateinit var modeGroup: RadioGroup
-
-    private val pickGif = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) { keep(uri); prefs.gifUri = uri; setMode(Mode.GIF) }
-        refresh()
-    }
-    private val pickVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) { keep(uri); prefs.videoUri = uri; setMode(Mode.VIDEO) }
-        refresh()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +42,22 @@ class MainActivity : AppCompatActivity() {
         bindSwitch(R.id.boldMinuteSwitch, prefs.boldMinute) { prefs.boldMinute = it }
         bindSwitch(R.id.minuteTipSwitch, prefs.minuteTip) { prefs.minuteTip = it }
         bindSwitch(R.id.digitalSwitch, prefs.showDigital) { prefs.showDigital = it }
+        bindSwitch(R.id.taperSwitch, prefs.taperHands) { prefs.taperHands = it }
+
+        val glowLabel = findViewById<TextView>(R.id.glowLabel)
+        findViewById<Slider>(R.id.glowSlider).apply {
+            value = prefs.glow.coerceIn(valueFrom, valueTo)
+            glowLabel.text = glowText(value)
+            setLabelFormatter { glowText(it) }
+            addOnChangeListener { _, v, _ -> glowLabel.text = glowText(v) }
+            addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: Slider) {}
+                override fun onStopTrackingTouch(slider: Slider) {
+                    prefs.glow = slider.value
+                    refresh()
+                }
+            })
+        }
         findViewById<MaterialSwitch>(R.id.backdropSwitch).apply {
             isChecked = prefs.clockBackdrop
             setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
@@ -84,10 +89,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.modeDotWave).setOnClickListener { setMode(Mode.DOT_WAVE) }
         findViewById<TextView>(R.id.modeSequencer).setOnClickListener { setMode(Mode.SEQUENCER) }
         findViewById<TextView>(R.id.modeDotClock).setOnClickListener { setMode(Mode.DOT_CLOCK) }
-        findViewById<TextView>(R.id.modeAurora).setOnClickListener { setMode(Mode.AURORA) }
-        findViewById<TextView>(R.id.modeParticles).setOnClickListener { setMode(Mode.PARTICLES) }
-        findViewById<TextView>(R.id.modeGif).setOnClickListener { pickGif.launch(arrayOf("image/gif", "image/webp")) }
-        findViewById<TextView>(R.id.modeVideo).setOnClickListener { pickVideo.launch(arrayOf("video/*")) }
     }
 
     override fun onResume() {
@@ -106,10 +107,10 @@ class MainActivity : AppCompatActivity() {
     private fun setMode(mode: Mode) {
         if (mode == Mode.DOT_CLOCK) {
             useDotClockBackground()
-            if (prefs.clockStyle.dotVariant == null) prefs.clockStyle = ClockStyle.DOT_MATRIX
+            if (!prefs.clockStyle.integrated) prefs.clockStyle = ClockStyle.DIAL_SECTOR
         } else {
             prefs.mode = mode
-            if (prefs.clockStyle.dotVariant != null) {
+            if (prefs.clockStyle.integrated) {
                 prefs.clockStyle = ClockStyle.SIMPLE
                 toast("ドット系の時計は背景と一体のため、時計を「シンプル」に切り替えました")
             }
@@ -125,6 +126,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
+    private fun glowText(v: Float) = "光の強さ（ドット系の時計）: ${(v * 100).toInt()}%"
+
     private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"
 
     private fun pickClockStyle() {
@@ -134,10 +137,10 @@ class MainActivity : AppCompatActivity() {
             .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.clockStyle)) { dialog, i ->
                 prefs.clockStyle = styles[i]
                 // ドット系の時計は背景と一体なので、背景もそろえる
-                if (styles[i].dotVariant != null && prefs.mode != Mode.DOT_CLOCK) {
+                if (styles[i].integrated && prefs.mode != Mode.DOT_CLOCK) {
                     useDotClockBackground()
                     toast("背景を「ドット時計」に切り替えました")
-                } else if (styles[i].dotVariant == null && prefs.mode == Mode.DOT_CLOCK) {
+                } else if (!styles[i].integrated && prefs.mode == Mode.DOT_CLOCK) {
                     prefs.mode = Mode.DOT_WAVE
                     toast("背景を「ドットウェーブ」に切り替えました")
                 }
@@ -174,18 +177,9 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 再起動後もサービスがファイルを読めるよう、URI の権限を永続化する。 */
-    private fun keep(uri: Uri) = runCatching {
-        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-
     private fun refresh() {
         modeGroup.check(
             when (prefs.mode) {
-                Mode.AURORA -> R.id.modeAurora
-                Mode.PARTICLES -> R.id.modeParticles
-                Mode.GIF -> R.id.modeGif
-                Mode.VIDEO -> R.id.modeVideo
                 Mode.EARTH -> R.id.modeEarth
                 Mode.MOON -> R.id.modeMoon
                 Mode.DOT_SECONDS -> R.id.modeDotSeconds
@@ -196,11 +190,6 @@ class MainActivity : AppCompatActivity() {
             }
         )
         findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
-        findViewById<TextView>(R.id.mediaLabel).text = when (prefs.mode) {
-            Mode.GIF -> prefs.gifUri?.lastPathSegment ?: ""
-            Mode.VIDEO -> prefs.videoUri?.lastPathSegment ?: ""
-            else -> ""
-        }
 
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()

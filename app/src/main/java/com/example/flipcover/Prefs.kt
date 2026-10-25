@@ -2,12 +2,15 @@ package com.example.flipcover
 
 import android.content.ComponentName
 import android.content.Context
-import android.net.Uri
 
-enum class Mode { AURORA, PARTICLES, GIF, VIDEO, EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
+enum class Mode { EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
 
-/** [dotVariant] があるものは、背景のドットで描く時計。 */
-enum class ClockStyle(val label: String, val dotVariant: DotClockView.Variant? = null) {
+/** [dotVariant] か [dial] があるものは、背景のドットで描く時計。 */
+enum class ClockStyle(
+    val label: String,
+    val dotVariant: DotClockView.Variant? = null,
+    val dial: DotDialView.Pattern? = null,
+) {
     DIGITAL("デジタル"),
     BOLD("ボールド（秒・日付つき）"),
     SIMPLE("シンプル"),
@@ -19,6 +22,15 @@ enum class ClockStyle(val label: String, val dotVariant: DotClockView.Variant? =
     DOT_MATRIX("ドットマトリクス（背景と一体）", DotClockView.Variant.MATRIX),
     DOT_RING("ドットリング（背景と一体）", DotClockView.Variant.RING),
     DOT_HANDS("ドットハンド（背景と一体）", DotClockView.Variant.HANDS),
+    DIAL_CHANNEL("ドット列の針（背景と一体）", dial = DotDialView.Pattern.CHANNEL),
+    DIAL_RADIAL("放射グリッド（背景と一体）", dial = DotDialView.Pattern.RADIAL),
+    DIAL_TICKS("目盛りリング（背景と一体）", dial = DotDialView.Pattern.TICKS),
+    DIAL_SECTOR("扇形（背景と一体）", dial = DotDialView.Pattern.SECTOR),
+    DIAL_RADAR("レーダー（背景と一体）", dial = DotDialView.Pattern.RADAR),
+    ;
+
+    /** 背景のドットで描く時計か。 */
+    val integrated get() = dotVariant != null || dial != null
 }
 
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */
@@ -30,7 +42,7 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putBoolean("enabled", v).apply()
 
     var mode: Mode
-        get() = runCatching { Mode.valueOf(sp.getString("mode", null)!!) }.getOrDefault(Mode.AURORA)
+        get() = runCatching { Mode.valueOf(sp.getString("mode", null)!!) }.getOrDefault(Mode.DOT_WAVE)
         set(v) = sp.edit().putString("mode", v.name).apply()
 
     var showClock: Boolean
@@ -62,6 +74,16 @@ class Prefs(context: Context) {
     var showDigital: Boolean
         get() = sp.getBoolean("showDigital", false)
         set(v) = sp.edit().putBoolean("showDigital", v).apply()
+
+    /** ドット系の時計で、針のドットを先端ほど小さくする。 */
+    var taperHands: Boolean
+        get() = sp.getBoolean("taperHands", true)
+        set(v) = sp.edit().putBoolean("taperHands", v).apply()
+
+    /** ドット系の時計の、扇形や残像の光の強さ（0〜1）。 */
+    var glow: Float
+        get() = sp.getFloat("glow", 0.5f)
+        set(v) = sp.edit().putFloat("glow", v).apply()
 
     /** 時計の後ろにぼかした暗い背景を敷く。 */
     var clockBackdrop: Boolean
@@ -109,14 +131,6 @@ class Prefs(context: Context) {
         get() = sp.getString("apps", null).orEmpty().split('|')
             .mapNotNull { ComponentName.unflattenFromString(it) }
         set(v) = sp.edit().putString("apps", v.joinToString("|") { it.flattenToString() }).apply()
-
-    var gifUri: Uri?
-        get() = sp.getString("gif", null)?.let(Uri::parse)
-        set(v) = sp.edit().putString("gif", v?.toString()).apply()
-
-    var videoUri: Uri?
-        get() = sp.getString("video", null)?.let(Uri::parse)
-        set(v) = sp.edit().putString("video", v?.toString()).apply()
 
     fun registerListener(l: android.content.SharedPreferences.OnSharedPreferenceChangeListener) =
         sp.registerOnSharedPreferenceChangeListener(l)
