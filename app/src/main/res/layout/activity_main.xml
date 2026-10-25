@@ -50,6 +50,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
+            <RadioButton android:id="@+id/modeEarth" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="地球（宇宙）" />
+            <RadioButton android:id="@+id/modeMoon" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="月（宇宙）" />
             <RadioButton android:id="@+id/modeAurora" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="オーロラ（内蔵）" />
             <RadioButton android:id="@+id/modeParticles" android:layout_width="wrap_content"
@@ -73,11 +77,12 @@
             android:layout_marginTop="12dp"
             android:text="時計を重ねて表示" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/analogSwitch"
+        <Button
+            android:id="@+id/clockStyle"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="アナログ時計にする" />
+            android:layout_marginTop="4dp" />
 
         <TextView
             android:layout_width="wrap_content"

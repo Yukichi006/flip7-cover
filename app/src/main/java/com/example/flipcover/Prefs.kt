@@ -4,7 +4,17 @@ import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 
-enum class Mode { AURORA, PARTICLES, GIF, VIDEO }
+enum class Mode { AURORA, PARTICLES, GIF, VIDEO, EARTH, MOON }
+
+enum class ClockStyle(val label: String) {
+    DIGITAL("デジタル"),
+    SIMPLE("シンプル"),
+    MINIMAL("ミニマル"),
+    NUMBERS("数字"),
+    ROMAN("ローマ数字"),
+    NEON("ネオン"),
+    DOTS("ドット"),
+}
 
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */
 class Prefs(context: Context) {
@@ -22,9 +32,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
 
-    var analogClock: Boolean
-        get() = sp.getBoolean("analog", false)
-        set(v) = sp.edit().putBoolean("analog", v).apply()
+    var clockStyle: ClockStyle
+        // 以前の「アナログ時計にする」設定を引き継ぐ
+        get() = runCatching { ClockStyle.valueOf(sp.getString("clockStyle", null)!!) }
+            .getOrElse { if (sp.getBoolean("analog", false)) ClockStyle.SIMPLE else ClockStyle.DIGITAL }
+        set(v) = sp.edit().putString("clockStyle", v.name).apply()
 
     // 配置はカバー画面に対する割合で持つ（位置は中心、大きさは画面幅に対する割合）
     var clockX: Float

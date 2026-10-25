@@ -7,7 +7,7 @@ Galaxy Z Flip7 のカバー画面に、アニメーションを表示する自�
 アプリはこれを `DisplayManager` で検知します。
 そしてユーザー補助サービスが、カバー画面の上にアニメーションを重ねて描きます（`TYPE_ACCESSIBILITY_OVERLAY`）。
 
-- 内蔵アニメーション：オーロラ、パーティクル
+- 内蔵アニメーション：地球・月（宇宙）、オーロラ、パーティクル
 - 自分の GIF / アニメーション WebP / 動画（無音でループ）
 - 時計を重ねて表示
 - ダブルタップで一時的に非表示（閉じ直すと再び表示）
@@ -27,3 +27,7 @@ Galaxy Z Flip7 のカバー画面に、アニメーションを表示する自�
 - カバー画面が見つからないとき：アプリ下部の「ディスプレイ情報」を見て、
   `CoverOverlayService.findCoverDisplay()` の id を直してください
 - アニメーションの追加：`CoverContent.kt` に View を追加してください
+
+## 画像のクレジット
+- 地球：NASA Visible Earth「Blue Marble」「Black Marble」（パブリックドメイン）。[three-globe](https://github.com/vasturiano/three-globe) 同梱の画像を縮小して使用
+- 月：NASA の Apollo 撮影写真（[NASA 3D Resources](https://github.com/nasa/NASA-3D-Resources)「Moon」）を、表側の正距円筒図法に変換して使用

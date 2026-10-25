@@ -49,13 +49,12 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
-        findViewById<MaterialSwitch>(R.id.analogSwitch).apply {
-            isChecked = prefs.analogClock
-            setOnCheckedChangeListener { _, v -> prefs.analogClock = v; refresh() }
-        }
+        findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
 
         // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
+        findViewById<TextView>(R.id.modeEarth).setOnClickListener { prefs.mode = Mode.EARTH; refresh() }
+        findViewById<TextView>(R.id.modeMoon).setOnClickListener { prefs.mode = Mode.MOON; refresh() }
         findViewById<TextView>(R.id.modeAurora).setOnClickListener { prefs.mode = Mode.AURORA; refresh() }
         findViewById<TextView>(R.id.modeParticles).setOnClickListener { prefs.mode = Mode.PARTICLES; refresh() }
         findViewById<TextView>(R.id.modeGif).setOnClickListener { pickGif.launch(arrayOf("image/gif", "image/webp")) }
@@ -65,6 +64,18 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    private fun pickClockStyle() {
+        val styles = ClockStyle.entries
+        MaterialAlertDialogBuilder(this)
+            .setTitle("時計のデザイン")
+            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.clockStyle)) { dialog, i ->
+                prefs.clockStyle = styles[i]
+                refresh()
+                dialog.dismiss()
+            }
+            .show()
     }
 
     private fun pickApps() {
@@ -106,8 +117,11 @@ class MainActivity : AppCompatActivity() {
                 Mode.PARTICLES -> R.id.modeParticles
                 Mode.GIF -> R.id.modeGif
                 Mode.VIDEO -> R.id.modeVideo
+                Mode.EARTH -> R.id.modeEarth
+                Mode.MOON -> R.id.modeMoon
             }
         )
+        findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
         findViewById<TextView>(R.id.mediaLabel).text = when (prefs.mode) {
             Mode.GIF -> prefs.gifUri?.lastPathSegment ?: ""
             Mode.VIDEO -> prefs.videoUri?.lastPathSegment ?: ""
