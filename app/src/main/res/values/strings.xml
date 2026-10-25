@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FlipCover</string>
+    <string name="service_label">FlipCover カバー画面アニメーション</string>
+    <string name="service_description">端末を閉じたときにカバー画面へアニメーションを表示するために使用します。画面の内容は読み取りません。</string>
+</resources>
