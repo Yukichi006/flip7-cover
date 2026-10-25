@@ -31,13 +31,17 @@ object Gear {
  * 機材風の背景の共通部分。[frame] で描き、指定の間隔で描き直す。
  * 電池持ちのため、どれも動きはゆっくり、描き直しは少なめにしている。
  */
-abstract class GearView(context: Context, private val intervalMs: Long = 100) : View(context) {
+abstract class GearView(
+    context: Context,
+    private val intervalMs: Long = 100,
+    private val speed: Float = 1f,
+) : View(context) {
     protected val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val start = System.nanoTime()
 
     final override fun onDraw(canvas: Canvas) {
         canvas.drawColor(Gear.BG)
-        frame(canvas, (System.nanoTime() - start) / 1e9f)
+        frame(canvas, (System.nanoTime() - start) / 1e9f * speed)
         postInvalidateDelayed(nextDelay())
     }
 
@@ -73,7 +77,7 @@ class DotSecondsView(context: Context) : GearView(context, 1000) {
 }
 
 /** LED のレベルメーター。ピークの位置に緑のマーカーが残り、ゆっくり落ちる。 */
-class LevelMeterView(context: Context) : GearView(context) {
+class LevelMeterView(context: Context, speed: Float = 1f) : GearView(context, speed = speed) {
     private val cols = 7
     private val segments = 16
     private val peak = FloatArray(cols)
@@ -112,7 +116,7 @@ class LevelMeterView(context: Context) : GearView(context) {
 }
 
 /** ドットの大きさが波紋のように変わる。波の頂上のドットはオレンジ。 */
-class DotWaveView(context: Context) : GearView(context) {
+class DotWaveView(context: Context, speed: Float = 1f) : GearView(context, speed = speed) {
     override fun frame(canvas: Canvas, t: Float) {
         val cols = 11
         val gap = width / (cols + 1f)
@@ -140,7 +144,7 @@ class DotWaveView(context: Context) : GearView(context) {
 }
 
 /** ステップシーケンサー。再生位置の列で、オンのパッドがオレンジに光る。 */
-class SequencerView(context: Context) : GearView(context) {
+class SequencerView(context: Context, speed: Float = 1f) : GearView(context, speed = speed) {
     private val cols = 8
     private val rows = 6
     private val rnd = Random(11)

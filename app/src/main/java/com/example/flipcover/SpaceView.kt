@@ -43,7 +43,7 @@ private class Texture(val width: Int, val height: Int, val pixels: IntArray) {
  * 画面の各画素が惑星のどこに当たるかは最初に一度だけ計算し、
  * 毎フレームは経度をずらして色を拾い直すだけにして軽くしている。
  */
-class SpaceView(context: Context, private val planet: Planet) : View(context) {
+class SpaceView(context: Context, private val planet: Planet, private val speed: Float = 1f) : View(context) {
     enum class Planet { EARTH, MOON }
 
     private val earth = planet == Planet.EARTH
@@ -197,7 +197,7 @@ class SpaceView(context: Context, private val planet: Planet) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         // 時計の時刻を使い、表示し直しても続きから動くようにする
-        val t = (System.currentTimeMillis() % 86_400_000L) / 1000.0
+        val t = (System.currentTimeMillis() % 86_400_000L) / 1000.0 * speed
         canvas.drawColor(0xFF020206.toInt())
         val ts = (t % 3600).toFloat()
         for (s in stars) {

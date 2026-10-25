@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider
 
 class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
@@ -56,6 +57,22 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
 
+        val speedLabel = findViewById<TextView>(R.id.speedLabel)
+        findViewById<Slider>(R.id.speedSlider).apply {
+            value = prefs.animSpeed.coerceIn(valueFrom, valueTo)
+            speedLabel.text = speedText(value)
+            setLabelFormatter { speedText(it) }
+            addOnChangeListener { _, v, _ -> speedLabel.text = speedText(v) }
+            // 動かしている間に何度も作り直さないよう、指を離したときに保存する
+            addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+                override fun onStartTrackingTouch(slider: Slider) {}
+                override fun onStopTrackingTouch(slider: Slider) {
+                    prefs.animSpeed = slider.value
+                    refresh()
+                }
+            })
+        }
+
         // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
         findViewById<TextView>(R.id.modeEarth).setOnClickListener { prefs.mode = Mode.EARTH; refresh() }
         findViewById<TextView>(R.id.modeMoon).setOnClickListener { prefs.mode = Mode.MOON; refresh() }
@@ -73,6 +90,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refresh()
     }
+
+    private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"
 
     private fun pickClockStyle() {
         val styles = ClockStyle.entries

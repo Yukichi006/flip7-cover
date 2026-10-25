@@ -56,17 +56,19 @@ object CoverContent {
         val w = size.width
         val h = size.height
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
+        val speed = prefs.animSpeed
         val content: View = when (prefs.mode) {
-            Mode.AURORA -> AuroraView(context)
-            Mode.PARTICLES -> ParticlesView(context)
-            Mode.GIF -> prefs.gifUri?.let { gifView(context, it) } ?: AuroraView(context)
-            Mode.VIDEO -> prefs.videoUri?.let { LoopingVideoView(context, it) } ?: AuroraView(context)
-            Mode.EARTH -> SpaceView(context, SpaceView.Planet.EARTH)
-            Mode.MOON -> SpaceView(context, SpaceView.Planet.MOON)
+            Mode.AURORA -> AuroraView(context, speed)
+            Mode.PARTICLES -> ParticlesView(context, speed)
+            Mode.GIF -> prefs.gifUri?.let { gifView(context, it) } ?: AuroraView(context, speed)
+            Mode.VIDEO -> prefs.videoUri?.let { LoopingVideoView(context, it) } ?: AuroraView(context, speed)
+            Mode.EARTH -> SpaceView(context, SpaceView.Planet.EARTH, speed)
+            Mode.MOON -> SpaceView(context, SpaceView.Planet.MOON, speed)
+            // ドット秒は時計そのものなので速さは変えない
             Mode.DOT_SECONDS -> DotSecondsView(context)
-            Mode.LEVEL_METER -> LevelMeterView(context)
-            Mode.DOT_WAVE -> DotWaveView(context)
-            Mode.SEQUENCER -> SequencerView(context)
+            Mode.LEVEL_METER -> LevelMeterView(context, speed)
+            Mode.DOT_WAVE -> DotWaveView(context, speed)
+            Mode.SEQUENCER -> SequencerView(context, speed)
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
@@ -320,13 +322,13 @@ class AnalogClockView(context: Context, private val style: ClockStyle) : View(co
 }
 
 /** ゆっくり動く色の光でオーロラ風の背景を描く。 */
-class AuroraView(context: Context) : View(context) {
+class AuroraView(context: Context, private val speed: Float = 1f) : View(context) {
     private val colors = intArrayOf(0xFF7C3AED.toInt(), 0xFF06B6D4.toInt(), 0xFFEC4899.toInt(), 0xFF22C55E.toInt())
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val start = System.nanoTime()
 
     override fun onDraw(canvas: Canvas) {
-        val t = (System.nanoTime() - start) / 1e9f
+        val t = (System.nanoTime() - start) / 1e9f * speed
         val w = width.toFloat()
         val h = height.toFloat()
         canvas.drawColor(0xFF0B0B1A.toInt())
@@ -343,7 +345,7 @@ class AuroraView(context: Context) : View(context) {
 }
 
 /** 光の粒がふわふわ上昇していくアニメーション。 */
-class ParticlesView(context: Context) : View(context) {
+class ParticlesView(context: Context, private val speed: Float = 1f) : View(context) {
     private class P(var x: Float, var y: Float, val r: Float, val speed: Float, val drift: Float, val hue: Float)
 
     private val particles = mutableListOf<P>()
@@ -367,7 +369,7 @@ class ParticlesView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val now = System.nanoTime()
-        val dt = ((now - last) / 1e9f).coerceAtMost(0.2f)
+        val dt = ((now - last) / 1e9f).coerceAtMost(0.2f) * speed
         last = now
         time += dt
         canvas.drawColor(0xFF050510.toInt())

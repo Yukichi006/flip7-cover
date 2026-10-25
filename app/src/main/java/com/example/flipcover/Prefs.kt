@@ -39,6 +39,11 @@ class Prefs(context: Context) {
             .getOrElse { if (sp.getBoolean("analog", false)) ClockStyle.SIMPLE else ClockStyle.DIGITAL }
         set(v) = sp.edit().putString("clockStyle", v.name).apply()
 
+    /** アニメーションの速さの倍率（1 が標準）。 */
+    var animSpeed: Float
+        get() = sp.getFloat("animSpeed", 1f)
+        set(v) = sp.edit().putFloat("animSpeed", v).apply()
+
     /** 時計の後ろにぼかした暗い背景を敷く。 */
     var clockBackdrop: Boolean
         get() = sp.getBoolean("clockBackdrop", true)
