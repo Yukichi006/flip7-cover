@@ -138,11 +138,11 @@ class PreviewEditor(
     private fun move(root: FrameLayout, v: View) {
         val w = size.width.toFloat()
         val h = size.height.toFloat()
-        // もう一方の部品の中心にも揃えられるようにする
-        val other = (0 until root.childCount).map { root.getChildAt(it) }
-            .firstOrNull { it !== v && (it.tag == CoverContent.TAG_CLOCK || it.tag == CoverContent.TAG_APPS) }
-        val xs = GRID.map { it * w } + listOfNotNull(other?.let { centerX(it) })
-        val ys = GRID.map { it * h } + listOfNotNull(other?.let { centerY(it) })
+        // ほかの部品の中心にも揃えられるようにする
+        val others = (0 until root.childCount).map { root.getChildAt(it) }
+            .filter { it !== v && it.tag in MOVABLE }
+        val xs = GRID.map { it * w } + others.map { centerX(it) }
+        val ys = GRID.map { it * h } + others.map { centerY(it) }
 
         val sx = nearest(rawCx, xs, w * SNAP)
         val sy = nearest(rawCy, ys, w * SNAP)
@@ -165,7 +165,7 @@ class PreviewEditor(
         val slop = size.width * 0.04f
         for (i in root.childCount - 1 downTo 0) {
             val v = root.getChildAt(i)
-            if (v.tag != CoverContent.TAG_CLOCK && v.tag != CoverContent.TAG_APPS) continue
+            if (v.tag !in MOVABLE) continue
             val l = v.left + v.translationX - slop
             val t = v.top + v.translationY - slop
             if (x >= l && x <= l + v.width + slop * 2 && y >= t && y <= t + v.height + slop * 2) return v
@@ -183,6 +183,11 @@ class PreviewEditor(
                 prefs.clockY = cy
                 prefs.clockSize = (prefs.clockSize * pinch).coerceIn(0.1f, 1f)
             }
+            CoverContent.TAG_DIGITAL -> {
+                prefs.digitalX = cx
+                prefs.digitalY = cy
+                prefs.digitalSize = (prefs.digitalSize * pinch).coerceIn(0.15f, 1f)
+            }
             CoverContent.TAG_APPS -> {
                 prefs.appsX = cx
                 prefs.appsY = cy
@@ -193,6 +198,9 @@ class PreviewEditor(
     }
 
     private companion object {
+        /** ドラッグで動かせる部品。 */
+        val MOVABLE: Set<Any?> = setOf(CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_APPS)
+
         /** 吸い付く位置（画面に対する割合）。 */
         val GRID = listOf(0.25f, 1 / 3f, 0.5f, 2 / 3f, 0.75f)
 

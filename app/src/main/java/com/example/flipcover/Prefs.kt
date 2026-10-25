@@ -47,6 +47,21 @@ class Prefs(context: Context) {
         get() = sp.getFloat("animSpeed", 1f)
         set(v) = sp.edit().putFloat("animSpeed", v).apply()
 
+    /** 分針を太く長くする（ドット系の時計）。 */
+    var boldMinute: Boolean
+        get() = sp.getBoolean("boldMinute", false)
+        set(v) = sp.edit().putBoolean("boldMinute", v).apply()
+
+    /** 分針の先に丸、外周に印を付ける（ドット系の時計）。 */
+    var minuteTip: Boolean
+        get() = sp.getBoolean("minuteTip", false)
+        set(v) = sp.edit().putBoolean("minuteTip", v).apply()
+
+    /** アナログ時計とは別に、秒つきのデジタル時計も表示する。 */
+    var showDigital: Boolean
+        get() = sp.getBoolean("showDigital", false)
+        set(v) = sp.edit().putBoolean("showDigital", v).apply()
+
     /** 時計の後ろにぼかした暗い背景を敷く。 */
     var clockBackdrop: Boolean
         get() = sp.getBoolean("clockBackdrop", true)
@@ -72,9 +87,20 @@ class Prefs(context: Context) {
         get() = sp.getFloat("appsSize", 0.11f)
         set(v) = sp.edit().putFloat("appsSize", v).apply()
 
+    var digitalX: Float
+        get() = sp.getFloat("digitalX", 0.5f)
+        set(v) = sp.edit().putFloat("digitalX", v).apply()
+    var digitalY: Float
+        get() = sp.getFloat("digitalY", 0.15f)
+        set(v) = sp.edit().putFloat("digitalY", v).apply()
+    var digitalSize: Float
+        get() = sp.getFloat("digitalSize", 0.42f)
+        set(v) = sp.edit().putFloat("digitalSize", v).apply()
+
     fun resetLayout() = sp.edit()
         .remove("clockX").remove("clockY").remove("clockSize")
         .remove("appsX").remove("appsY").remove("appsSize")
+        .remove("digitalX").remove("digitalY").remove("digitalSize")
         .apply()
 
     /** カバー画面に並べるアプリ（表示順）。 */

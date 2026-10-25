@@ -226,3 +226,30 @@ class BoldClockView(context: Context) : View(context) {
         postInvalidateDelayed(1000 - System.currentTimeMillis() % 1000)
     }
 }
+
+/** 秒まで出すデジタル時計。アナログ時計と並べて使う。秒はオレンジで目に入りやすくする。 */
+class SecondsClockView(context: Context) : View(context) {
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        textAlign = Paint.Align.LEFT
+    }
+    private val hm = SimpleDateFormat("HH:mm", Locale.US)
+    private val ss = SimpleDateFormat(":ss", Locale.US)
+
+    override fun onDraw(canvas: Canvas) {
+        val now = Calendar.getInstance().time
+        text.textSize = height * 0.8f
+        val main = hm.format(now)
+        val sec = ss.format(now)
+        // 数字の幅で文字が揺れないよう、等幅の数字で描く
+        text.fontFeatureSettings = "tnum"
+        val total = text.measureText(main) + text.measureText(sec)
+        val x = (width - total) / 2
+        val baseline = height / 2f - (text.ascent() + text.descent()) / 2
+        text.color = Gear.ON
+        canvas.drawText(main, x, baseline, text)
+        text.color = Gear.ORANGE
+        canvas.drawText(sec, x + text.measureText(main), baseline, text)
+        postInvalidateDelayed(1000 - System.currentTimeMillis() % 1000)
+    }
+}

@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
+        bindSwitch(R.id.boldMinuteSwitch, prefs.boldMinute) { prefs.boldMinute = it }
+        bindSwitch(R.id.minuteTipSwitch, prefs.minuteTip) { prefs.minuteTip = it }
+        bindSwitch(R.id.digitalSwitch, prefs.showDigital) { prefs.showDigital = it }
         findViewById<MaterialSwitch>(R.id.backdropSwitch).apply {
             isChecked = prefs.clockBackdrop
             setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
@@ -89,6 +92,13 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    private fun bindSwitch(id: Int, initial: Boolean, save: (Boolean) -> Unit) {
+        findViewById<MaterialSwitch>(id).apply {
+            isChecked = initial
+            setOnCheckedChangeListener { _, v -> save(v); refresh() }
+        }
     }
 
     private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"

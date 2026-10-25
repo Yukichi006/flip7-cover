@@ -100,6 +100,24 @@
             android:text="時計を重ねて表示" />
 
         <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/boldMinuteSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="分針を太く長くする（ドット系）" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/minuteTipSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="分針の先に丸と外周の印を付ける（ドット系）" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/digitalSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="秒つきデジタル時計も表示する" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/backdropSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
