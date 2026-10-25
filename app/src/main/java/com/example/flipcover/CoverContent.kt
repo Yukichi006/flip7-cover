@@ -13,6 +13,9 @@ import android.graphics.SurfaceTexture
 import android.graphics.drawable.AnimatedImageDrawable
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Size
+import android.util.TypedValue
+import android.view.Display
 import android.view.Gravity
 import android.view.Surface
 import android.view.TextureView
@@ -27,11 +30,30 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** カバー画面とプレビューで共通に使う表示内容を組み立てる。 */
+/**
+ * カバー画面とプレビューで共通に使う表示内容を組み立てる。
+ * 配置はカバー画面の実寸（px）で計算し、プレビューはそれを縮小して表示する。
+ */
 object CoverContent {
+    const val TAG_CLOCK = "clock"
+    const val TAG_APPS = "apps"
+
+    /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
+    fun coverSize(display: Display?): Size {
+        val mode = display?.mode
+        return if (mode != null && mode.physicalWidth > 0) Size(mode.physicalWidth, mode.physicalHeight)
+        else Size(948, 1048)
+    }
 
     /** [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。 */
-    fun create(context: Context, prefs: Prefs, onLaunch: ((ComponentName) -> Unit)? = null): FrameLayout {
+    fun create(
+        context: Context,
+        prefs: Prefs,
+        size: Size,
+        onLaunch: ((ComponentName) -> Unit)? = null,
+    ): FrameLayout {
+        val w = size.width
+        val h = size.height
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         val content: View = when (prefs.mode) {
             Mode.AURORA -> AuroraView(context)
@@ -42,31 +64,45 @@ object CoverContent {
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
         if (prefs.showClock) {
-            if (prefs.analogClock) {
-                val size = context.dp(150)
-                root.addView(AnalogClockView(context), FrameLayout.LayoutParams(size, size, Gravity.CENTER))
+            val box = (prefs.clockSize * w).toInt()
+            val (clock, boxH) = if (prefs.analogClock) {
+                AnalogClockView(context) to box
             } else {
-                val clock = TextClock(context).apply {
+                TextClock(context).apply {
                     format12Hour = "H:mm"
                     format24Hour = "H:mm"
+                    gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
-                    textSize = 48f
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, box * 0.3f)
                     setShadowLayer(12f, 0f, 0f, Color.BLACK)
-                }
-                root.addView(clock, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                } to box / 2
             }
+            clock.tag = TAG_CLOCK
+            root.addView(clock, place(size, prefs.clockX, prefs.clockY, box, boxH))
         }
 
-        val apps = appRow(context, prefs.apps, onLaunch)
-        if (apps != null) {
-            root.addView(apps, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = context.dp(24)
-            })
+        val icon = (prefs.appsSize * w).toInt()
+        appRow(context, prefs.apps, icon, onLaunch)?.let { row ->
+            row.tag = TAG_APPS
+            root.addView(row, place(size, prefs.appsX, prefs.appsY, row.childCount * icon, icon))
         }
         return root
     }
 
-    private fun appRow(context: Context, apps: List<ComponentName>, onLaunch: ((ComponentName) -> Unit)?): View? {
+    /** 中心が (cx, cy)（画面に対する割合）になるよう配置する。画面からははみ出さない。 */
+    private fun place(size: Size, cx: Float, cy: Float, vw: Int, vh: Int) =
+        FrameLayout.LayoutParams(vw, vh).apply {
+            gravity = Gravity.TOP or Gravity.START
+            leftMargin = (cx * size.width - vw / 2f).toInt().coerceIn(0, maxOf(0, size.width - vw))
+            topMargin = (cy * size.height - vh / 2f).toInt().coerceIn(0, maxOf(0, size.height - vh))
+        }
+
+    private fun appRow(
+        context: Context,
+        apps: List<ComponentName>,
+        iconSize: Int,
+        onLaunch: ((ComponentName) -> Unit)?,
+    ): LinearLayout? {
         val pm = context.packageManager
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         for (cn in apps) {
@@ -75,11 +111,12 @@ object CoverContent {
             val iv = ImageView(context).apply {
                 setImageDrawable(icon)
                 contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
-                val pad = context.dp(6)
+                val pad = iconSize / 9
                 setPadding(pad, pad, pad, pad)
-                setOnClickListener { onLaunch?.invoke(cn) }
+                // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
+                if (onLaunch != null) setOnClickListener { onLaunch(cn) }
             }
-            row.addView(iv, LinearLayout.LayoutParams(context.dp(56), context.dp(56)))
+            row.addView(iv, LinearLayout.LayoutParams(iconSize, iconSize))
         }
         return if (row.childCount > 0) row else null
     }
@@ -99,8 +136,6 @@ object CoverContent {
         return iv
     }
 }
-
-private fun Context.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
 /** 文字盤と針を描くアナログ時計。 */
 class AnalogClockView(context: Context) : View(context) {

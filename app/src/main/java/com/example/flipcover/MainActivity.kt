@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.Display
 import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
@@ -19,7 +18,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
-    private lateinit var preview: FrameLayout
+    private lateinit var editor: PreviewEditor
     private lateinit var modeGroup: RadioGroup
 
     private val pickGif = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -35,7 +34,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
-        preview = findViewById(R.id.preview)
+        editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
+        findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
         modeGroup = findViewById(R.id.modeGroup)
 
         findViewById<Button>(R.id.openAccessibility).setOnClickListener {
@@ -118,8 +118,10 @@ class MainActivity : AppCompatActivity() {
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
         }.joinToString("、").ifEmpty { "なし" }
 
-        preview.removeAllViews()
-        preview.addView(CoverContent.create(this, prefs), FrameLayout.LayoutParams(-1, -1))
+        val cover = CoverOverlayService.findCoverDisplay(getSystemService(DisplayManager::class.java))
+        val size = CoverContent.coverSize(cover)
+        val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
+        editor.show(CoverContent.create(this, prefs, size), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text =
             if (isServiceEnabled()) "✅ サービス有効" else "⚠️ ユーザー補助で「FlipCover」をオンにしてください"
@@ -143,8 +145,10 @@ class MainActivity : AppCompatActivity() {
             }
             "id=${d.displayId} ${mode.physicalWidth}x${mode.physicalHeight} $state \"${d.name}\"" +
                 if (d.displayId == cover?.displayId) "  ← カバー画面" else ""
-        }.ifEmpty { "なし" } + if (cover != null && dm.displays.none { it.displayId == cover.displayId })
-            "\nid=${cover.displayId} \"${cover.name}\"  ← カバー画面" else ""
+        }.ifEmpty { "なし" } + (if (cover != null && dm.displays.none { it.displayId == cover.displayId })
+            "\nid=${cover.displayId} \"${cover.name}\"  ← カバー画面" else "") +
+            "\nカバー画面の実寸: ${CoverContent.coverSize(cover).let { "${it.width}x${it.height}" }}" +
+            "\n切り欠き: ${runCatching { cover?.cutout?.boundingRects }.getOrNull()?.joinToString().orEmpty().ifEmpty { "取得できず" }}"
     }
 
     companion object {

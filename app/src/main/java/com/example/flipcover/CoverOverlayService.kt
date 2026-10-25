@@ -76,7 +76,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private fun show(display: Display) {
         val ctx = createWindowContext(display, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null)
         val wm = ctx.getSystemService(WindowManager::class.java)
-        val view = CoverContent.create(ctx, prefs, ::launch)
+        val view = CoverContent.create(ctx, prefs, CoverContent.coverSize(display), ::launch)
 
         val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true

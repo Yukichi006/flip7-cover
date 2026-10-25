@@ -26,6 +26,31 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("analog", false)
         set(v) = sp.edit().putBoolean("analog", v).apply()
 
+    // 配置はカバー画面に対する割合で持つ（位置は中心、大きさは画面幅に対する割合）
+    var clockX: Float
+        get() = sp.getFloat("clockX", 0.5f)
+        set(v) = sp.edit().putFloat("clockX", v).apply()
+    var clockY: Float
+        get() = sp.getFloat("clockY", 0.45f)
+        set(v) = sp.edit().putFloat("clockY", v).apply()
+    var clockSize: Float
+        get() = sp.getFloat("clockSize", 0.35f)
+        set(v) = sp.edit().putFloat("clockSize", v).apply()
+    var appsX: Float
+        get() = sp.getFloat("appsX", 0.5f)
+        set(v) = sp.edit().putFloat("appsX", v).apply()
+    var appsY: Float
+        get() = sp.getFloat("appsY", 0.75f)
+        set(v) = sp.edit().putFloat("appsY", v).apply()
+    var appsSize: Float
+        get() = sp.getFloat("appsSize", 0.11f)
+        set(v) = sp.edit().putFloat("appsSize", v).apply()
+
+    fun resetLayout() = sp.edit()
+        .remove("clockX").remove("clockY").remove("clockSize")
+        .remove("appsX").remove("appsY").remove("appsSize")
+        .apply()
+
     /** カバー画面に並べるアプリ（表示順）。 */
     var apps: List<ComponentName>
         get() = sp.getString("apps", null).orEmpty().split('|')

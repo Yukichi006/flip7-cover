@@ -108,14 +108,29 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
-        <!-- Flip7 のカバー画面 (948x1048) に近い比率 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ドラッグで移動、2本指で拡大・縮小できます。赤い枠はカメラの位置です。"
+            android:textSize="12sp" />
+
+        <!-- Flip7 のカバー画面 (948x1048) と同じ比率 -->
         <FrameLayout
             android:id="@+id/preview"
-            android:layout_width="240dp"
-            android:layout_height="265dp"
+            android:layout_width="300dp"
+            android:layout_height="332dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="8dp"
-            android:background="#000000" />
+            android:background="#000000"
+            android:clipChildren="true" />
+
+        <Button
+            android:id="@+id/resetLayout"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="配置を元に戻す" />
 
         <TextView
             android:layout_width="wrap_content"
