@@ -6,6 +6,7 @@ import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Display
+import android.view.View
 import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -81,7 +82,7 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // ラジオボタンはタップ時に処理する（GIF/動画は毎回ファイル選択）
+        // ラジオボタンはタップ時に処理する（時計との組み合わせもそろえるため）
         findViewById<TextView>(R.id.modeEarth).setOnClickListener { setMode(Mode.EARTH) }
         findViewById<TextView>(R.id.modeMoon).setOnClickListener { setMode(Mode.MOON) }
         findViewById<TextView>(R.id.modeDotSeconds).setOnClickListener { setMode(Mode.DOT_SECONDS) }
@@ -126,7 +127,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
-    private fun glowText(v: Float) = "光の強さ（ドット系の時計）: ${(v * 100).toInt()}%"
+    private fun glowText(v: Float) = "光の強さ（扇形・残像）: ${(v * 100).toInt()}%"
 
     private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"
 
@@ -190,6 +191,9 @@ class MainActivity : AppCompatActivity() {
             }
         )
         findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
+        // ドット系の時計だけの設定は、選んでいるときだけ出す
+        findViewById<View>(R.id.dotOptions).visibility =
+            if (prefs.showClock && prefs.clockStyle.integrated) View.VISIBLE else View.GONE
 
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()

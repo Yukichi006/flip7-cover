@@ -37,33 +37,30 @@
             android:layout_marginTop="12dp"
             android:text="閉じたときにカバー画面へ表示" />
 
+        <!-- 背景 -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="アニメーション"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            style="@style/FlipCover.Section"
+            android:text="背景" />
 
         <RadioGroup
             android:id="@+id/modeGroup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <RadioButton android:id="@+id/modeEarth" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="地球（宇宙）" />
-            <RadioButton android:id="@+id/modeMoon" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="月（宇宙）" />
             <RadioButton android:id="@+id/modeDotClock" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="ドット時計（背景と一体・機材風）" />
-            <RadioButton android:id="@+id/modeDotSeconds" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="ドット秒（機材風）" />
-            <RadioButton android:id="@+id/modeLevelMeter" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="レベルメーター（機材風）" />
+                android:layout_height="wrap_content" android:text="ドット時計（時計と一体）" />
             <RadioButton android:id="@+id/modeDotWave" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="ドットウェーブ（機材風）" />
+                android:layout_height="wrap_content" android:text="ドットウェーブ" />
+            <RadioButton android:id="@+id/modeDotSeconds" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="ドット秒" />
+            <RadioButton android:id="@+id/modeLevelMeter" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="レベルメーター" />
             <RadioButton android:id="@+id/modeSequencer" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="シーケンサー（機材風）" />
+                android:layout_height="wrap_content" android:text="シーケンサー" />
+            <RadioButton android:id="@+id/modeEarth" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="地球（衛星から見た景色）" />
+            <RadioButton android:id="@+id/modeMoon" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="月（衛星から見た景色）" />
         </RadioGroup>
 
         <TextView
@@ -80,55 +77,16 @@
             android:valueFrom="0.25"
             android:valueTo="3" />
 
+        <!-- 時計 -->
+        <TextView
+            style="@style/FlipCover.Section"
+            android:text="時計" />
+
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/clockSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="時計を重ねて表示" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/boldMinuteSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="分針を太く長くする（ドット系の時計）" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/minuteTipSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="分針の先に丸と外周の印を付ける（ドット系の時計）" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/taperSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="針の先を細くする（ドット系の時計）" />
-
-        <TextView
-            android:id="@+id/glowLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
-
-        <com.google.android.material.slider.Slider
-            android:id="@+id/glowSlider"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:valueFrom="0"
-            android:valueTo="1" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/digitalSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="秒つきデジタル時計も表示する" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/backdropSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="時計の後ろをぼかして見やすくする" />
+            android:text="時計を表示" />
 
         <Button
             android:id="@+id/clockStyle"
@@ -137,13 +95,65 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/digitalSwitch"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="カバー画面のアプリ"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:text="秒つきデジタル時計も表示" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/backdropSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="時計の後ろをぼかして見やすくする" />
+
+        <!-- ドット系の時計を選んでいるときだけ表示する -->
+        <LinearLayout
+            android:id="@+id/dotOptions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                style="@style/FlipCover.Subsection"
+                android:text="ドット系の時計" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/taperSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="針の先を細くする" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/boldMinuteSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="分針を大きくする" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/minuteTipSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="分針の先に印を付ける" />
+
+            <TextView
+                android:id="@+id/glowLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/glowSlider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:valueFrom="0"
+                android:valueTo="1" />
+        </LinearLayout>
+
+        <!-- カバー画面のアプリ -->
+        <TextView
+            style="@style/FlipCover.Section"
+            android:text="カバー画面のアプリ" />
 
         <TextView
             android:id="@+id/appsLabel"
@@ -158,13 +168,10 @@
             android:layout_marginTop="4dp"
             android:text="アプリを選ぶ" />
 
+        <!-- プレビュー -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="プレビュー"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            style="@style/FlipCover.Section"
+            android:text="プレビュー" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -191,11 +198,8 @@
             android:text="配置を元に戻す" />
 
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="ディスプレイ情報（デバッグ用）"
-            android:textStyle="bold" />
+            style="@style/FlipCover.Subsection"
+            android:text="ディスプレイ情報（デバッグ用）" />
 
         <TextView
             android:id="@+id/displayInfo"

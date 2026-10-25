@@ -1,31 +1,41 @@
 # FlipCover
 
-Galaxy Z Flip7 のカバー画面に、アニメーションを表示する自作アプリです。
+Galaxy Z Flip7 のカバー画面に、時計とアニメーションを表示する自作アプリです。
 
 ## 仕組み
 端末を閉じると、カバー画面（displayId=1）だけが点灯します。
-アプリはこれを `DisplayManager` で検知します。
-そしてユーザー補助サービスが、カバー画面の上にアニメーションを重ねて描きます（`TYPE_ACCESSIBILITY_OVERLAY`）。
+アプリはこれを `DisplayManager` で検知し、ユーザー補助サービスがカバー画面の上に重ねて描きます（`TYPE_ACCESSIBILITY_OVERLAY`）。
 
-- 内蔵アニメーション：地球・月（宇宙）、機材風（ドット時計・ドット秒・レベルメーター・ドットウェーブ・シーケンサー）
-- 時計を重ねて表示
+## できること
+- **背景**
+  - ドット時計：背景のドットそのものが時計になる（ドット列の針・放射グリッド・目盛りリング・扇形・レーダー）
+  - 機材風：ドットウェーブ・ドット秒・レベルメーター・シーケンサー
+  - 宇宙：衛星から見た地球・月
+  - アニメーションの速さを 0.25〜3 倍で調整
+- **時計**：デジタル・ボールド・アナログ各種、秒つきデジタル時計の併用、後ろのぼかし
+  - ドット時計は、時針＝オレンジ、分針＝白、秒＝黄色（残像つき）。針の太さ・先端・光の強さを調整できる
+- **カバー画面のアプリ**：最大 5 個を並べ、タップでカバー画面上に起動
+- **配置**：プレビューでドラッグ・ピンチして位置と大きさを調整（中央や 3 分割の線に吸い付く。カメラの位置も表示）
 - ダブルタップで一時的に非表示（閉じ直すと再び表示）
 
-## ビルド
-- **Android Studio**：このフォルダを開いて Run
-- **GitHub Actions**：GitHub に push すると APK が作られます（Actions → Artifacts）
-- **コマンド**：`./gradlew assembleDebug`（Android SDK が必要）
+## インストールと更新
+`main` に push すると GitHub Actions が APK をビルドし、[Releases](../../releases) に `flipcover-v1.0.<番号>.apk` を公開します。
 
-## 使い方
-1. APK をインストールしてアプリを開く
-2. 「ユーザー補助の設定を開く」→ インストール済みアプリ → FlipCover をオン
-   - Play ストア以外から入れたアプリは、オンにできないことがあります。その場合は、アプリ情報の右上「︙」→「制限付き設定を許可」を押してください
-3. アニメーションを選んで、端末を閉じる
+1. [Obtainium](https://github.com/ImranR98/Obtainium) に、このリポジトリの URL を登録する
+2. 「インストール」または「アップデート」を押す（Galaxy のオートブロッカーは、そのときだけオフにする）
+3. 初回だけ：「ユーザー補助の設定を開く」→ インストール済みアプリ → FlipCover をオン
+   - オンにできないときは、アプリ情報の右上「︙」→「制限付き設定を許可」
+
+APK は Secrets の固定の鍵で署名するので、上書きで更新できます（`FLIPCOVER_KEYSTORE_B64` と `FLIPCOVER_KEYSTORE_PASSWORD`）。
+
+## ビルド
+- **GitHub Actions**：push すると自動でビルド・公開
+- **手元**：`./gradlew assembleDebug`（Android SDK が必要）
 
 ## 調整したいとき
-- カバー画面が見つからないとき：アプリ下部の「ディスプレイ情報」を見て、
-  `CoverOverlayService.findCoverDisplay()` の id を直してください
-- アニメーションの追加：`CoverContent.kt` に View を追加してください
+- カバー画面が見つからないとき：アプリ下部の「ディスプレイ情報」を見て、`CoverOverlayService.findCoverDisplay()` の id を直す
+- 背景の追加：`GearViews.kt` などに View を作り、`Mode` と `CoverContent.create()` に足す
+- ドット時計の追加：`DotDialView.Pattern` に足し、`ClockStyle` に選択肢を足す
 
 ## 画像のクレジット
 - 地球の地表：NASA Visible Earth「Blue Marble」（パブリックドメイン）。[three-globe](https://github.com/vasturiano/three-globe) 同梱の画像を使用

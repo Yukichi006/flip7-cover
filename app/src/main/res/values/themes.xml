@@ -1,3 +1,20 @@
 <resources>
     <style name="Theme.FlipCover" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <!-- 設定画面の見出し -->
+    <style name="FlipCover.Section" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">24dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="FlipCover.Subsection" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>
