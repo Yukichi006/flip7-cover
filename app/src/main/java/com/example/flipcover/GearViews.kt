@@ -9,6 +9,8 @@ import android.view.View
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -140,6 +142,124 @@ class DotWaveView(context: Context, speed: Float = 1f) : GearView(context, speed
         paint.color = Gear.ORANGE
         paint.alpha = 255
         canvas.drawCircle(gap * (ci + 1), oy + cj * gap, gap * 0.3f, paint)
+    }
+}
+
+/**
+ * ドットウェーブの中に、ドットだけでアナログ時計を浮かび上がらせる背景。
+ * 針の上のドットが大きく明るくなり（時針は白、分針は黄）、目盛りの位置のドットが少し明るくなる。
+ * 秒は、その位置に一番近いドットがオレンジに光る。
+ *
+ * @param clockCx 時計の中心（px）
+ * @param clockR 時計の半径（px）。0 なら針を描かず、ただのドットウェーブになる
+ */
+class DotClockView(
+    context: Context,
+    private val clockCx: Float,
+    private val clockCy: Float,
+    private val clockR: Float,
+    speed: Float = 1f,
+    private val boldMinute: Boolean = false,
+    private val minuteTip: Boolean = false,
+) : GearView(context, intervalMs = 125, speed = speed) {
+    private val cols = 19
+
+    override fun frame(canvas: Canvas, t: Float) {
+        val gap = width / (cols + 1f)
+        val rows = (height / gap).toInt() - 1
+        val oy = (height - gap * (rows - 1)) / 2
+        val sx = width * (0.5f + 0.3f * sin(t * 0.04f))
+        val sy = height * (0.5f + 0.3f * sin(t * 0.05f + 1f))
+
+        val now = Calendar.getInstance()
+        val sec = now.get(Calendar.SECOND) + now.get(Calendar.MILLISECOND) / 1000f
+        val minute = now.get(Calendar.MINUTE) + sec / 60f
+        val hour = now.get(Calendar.HOUR) + minute / 60f
+        val r = clockR
+        val minLen = if (boldMinute) 0.9f else 0.8f
+        val hx = handX(hour * 30f, r * 0.5f)
+        val hy = handY(hour * 30f, r * 0.5f)
+        val mx = handX(minute * 6f, r * minLen)
+        val my = handY(minute * 6f, r * minLen)
+
+        // 目盛り・秒・分針の先に当たるドット（一番近いもの）を先に求めておく
+        fun nearest(x: Float, y: Float): Int {
+            val i = (x / gap - 1 + 0.5f).toInt().coerceIn(0, cols - 1)
+            val j = ((y - oy) / gap + 0.5f).toInt().coerceIn(0, max(rows - 1, 0))
+            return j * cols + i
+        }
+        val marks = HashMap<Int, Boolean>()
+        if (r > 0f) for (k in 0 until 12) {
+            marks[nearest(clockCx + handX(k * 30f, r), clockCy + handY(k * 30f, r))] = k % 3 == 0
+        }
+        val secDot = if (r > 0f) nearest(clockCx + handX(sec * 6f, r), clockCy + handY(sec * 6f, r)) else -1
+        val tipDot = if (r > 0f && minuteTip) nearest(clockCx + mx, clockCy + my) else -1
+        val rimDot = if (r > 0f && minuteTip) nearest(clockCx + handX(minute * 6f, r * 1.12f),
+            clockCy + handY(minute * 6f, r * 1.12f)) else -1
+
+        for (j in 0 until rows) for (i in 0 until cols) {
+            val x = gap * (i + 1)
+            val y = oy + j * gap
+            val idx = j * cols + i
+            val v = 0.5f + 0.5f * sin(hypot(x - sx, y - sy) / gap * 0.6f - t * 0.5f)
+            // 背景としてのドットは控えめに
+            var color = Gear.ON
+            var alpha = 60 + 60 * v
+            var radius = gap * (0.1f + 0.1f * v)
+
+            if (r > 0f) {
+                val px = x - clockCx
+                val py = y - clockCy
+                val hHit = bump(segmentDistance(px, py, hx, hy), gap * 0.9f)
+                val mHit = bump(segmentDistance(px, py, mx, my), gap * (if (boldMinute) 0.8f else 0.55f))
+                val k = max(hHit, mHit)
+                if (k > 0.05f) {
+                    color = if (mHit > hHit) Gear.YELLOW else Gear.ON
+                    alpha = max(alpha, 80 + 175 * k)
+                    radius = max(radius, gap * (0.12f + 0.28f * k))
+                }
+                marks[idx]?.let { quarter ->
+                    alpha = max(alpha, if (quarter) 230f else 160f)
+                    radius = max(radius, gap * (if (quarter) 0.22f else 0.16f))
+                }
+                if (idx == tipDot) { color = Gear.YELLOW; alpha = 255f; radius = gap * 0.36f }
+                if (idx == rimDot) { color = Gear.YELLOW; alpha = 220f; radius = max(radius, gap * 0.2f) }
+                if (idx == secDot) { color = Gear.ORANGE; alpha = 255f; radius = gap * 0.3f }
+            }
+            paint.color = color
+            paint.alpha = alpha.toInt().coerceIn(0, 255)
+            canvas.drawCircle(x, y, radius, paint)
+        }
+        paint.alpha = 255
+    }
+
+    private fun handX(deg: Float, len: Float) = (sin(Math.toRadians(deg.toDouble())) * len).toFloat()
+    private fun handY(deg: Float, len: Float) = (-cos(Math.toRadians(deg.toDouble())) * len).toFloat()
+
+    private fun segmentDistance(x: Float, y: Float, tx: Float, ty: Float): Float {
+        val len2 = tx * tx + ty * ty
+        if (len2 == 0f) return hypot(x, y)
+        val p = ((x * tx + y * ty) / len2).coerceIn(0f, 1f)
+        return hypot(x - tx * p, y - ty * p)
+    }
+
+    private fun bump(d: Float, width: Float): Float {
+        val q = d / width
+        return exp(-q * q)
+    }
+}
+
+/** 背景と一体の時計の、プレビュー上の掴む場所。編集中だけ薄い円を出す。 */
+class ClockHandle(context: Context, private val visible: Boolean) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = 0x66FFFFFF
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        if (!visible) return
+        paint.strokeWidth = width * 0.008f
+        canvas.drawCircle(width / 2f, height / 2f, width / 2f - paint.strokeWidth, paint)
     }
 }
 

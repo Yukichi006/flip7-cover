@@ -83,6 +83,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.modeLevelMeter).setOnClickListener { prefs.mode = Mode.LEVEL_METER; refresh() }
         findViewById<TextView>(R.id.modeDotWave).setOnClickListener { prefs.mode = Mode.DOT_WAVE; refresh() }
         findViewById<TextView>(R.id.modeSequencer).setOnClickListener { prefs.mode = Mode.SEQUENCER; refresh() }
+        findViewById<TextView>(R.id.modeDotClock).setOnClickListener {
+            prefs.mode = Mode.DOT_CLOCK
+            // ドットで針を描くので、小さいと針が数個のドットにしかならない。最初は大きめにする
+            if (prefs.clockSize < 0.6f) prefs.clockSize = 0.8f
+            refresh()
+        }
         findViewById<TextView>(R.id.modeAurora).setOnClickListener { prefs.mode = Mode.AURORA; refresh() }
         findViewById<TextView>(R.id.modeParticles).setOnClickListener { prefs.mode = Mode.PARTICLES; refresh() }
         findViewById<TextView>(R.id.modeGif).setOnClickListener { pickGif.launch(arrayOf("image/gif", "image/webp")) }
@@ -160,6 +166,7 @@ class MainActivity : AppCompatActivity() {
                 Mode.LEVEL_METER -> R.id.modeLevelMeter
                 Mode.DOT_WAVE -> R.id.modeDotWave
                 Mode.SEQUENCER -> R.id.modeSequencer
+                Mode.DOT_CLOCK -> R.id.modeDotClock
             }
         )
         findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
@@ -176,7 +183,7 @@ class MainActivity : AppCompatActivity() {
         val cover = CoverOverlayService.findCoverDisplay(getSystemService(DisplayManager::class.java))
         val size = CoverContent.coverSize(cover)
         val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
-        editor.show(CoverContent.create(this, prefs, size), size, cutouts)
+        editor.show(CoverContent.create(this, prefs, size, editing = true), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text =
             if (isServiceEnabled()) "✅ サービス有効" else "⚠️ ユーザー補助で「FlipCover」をオンにしてください"

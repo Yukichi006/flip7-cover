@@ -54,6 +54,8 @@
                 android:layout_height="wrap_content" android:text="地球（宇宙）" />
             <RadioButton android:id="@+id/modeMoon" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="月（宇宙）" />
+            <RadioButton android:id="@+id/modeDotClock" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="ドット時計（背景と一体・機材風）" />
             <RadioButton android:id="@+id/modeDotSeconds" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="ドット秒（機材風）" />
             <RadioButton android:id="@+id/modeLevelMeter" android:layout_width="wrap_content"

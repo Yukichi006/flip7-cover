@@ -50,12 +50,16 @@ object CoverContent {
         else Size(948, 1048)
     }
 
-    /** [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。 */
+    /**
+     * [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。
+     * [editing] はプレビューで編集しているときに true にする。
+     */
     fun create(
         context: Context,
         prefs: Prefs,
         size: Size,
         onLaunch: ((ComponentName) -> Unit)? = null,
+        editing: Boolean = false,
     ): FrameLayout {
         val w = size.width
         val h = size.height
@@ -73,10 +77,23 @@ object CoverContent {
             Mode.LEVEL_METER -> LevelMeterView(context, speed)
             Mode.DOT_WAVE -> DotWaveView(context, speed)
             Mode.SEQUENCER -> SequencerView(context, speed)
+            Mode.DOT_CLOCK -> {
+                // 時計の位置はほかの部品と同じく画面内に収めた値を使う
+                val box = (prefs.clockSize * w).toInt()
+                val lp = place(size, prefs.clockX, prefs.clockY, box, box)
+                val r = if (prefs.showClock) box / 2f else 0f
+                DotClockView(context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r,
+                    speed, prefs.boldMinute, prefs.minuteTip)
+            }
         }
         root.addView(content, FrameLayout.LayoutParams(-1, -1))
 
-        if (prefs.showClock) {
+        if (prefs.showClock && prefs.mode == Mode.DOT_CLOCK) {
+            // 時計は背景が描くので、ここにはドラッグで動かすための透明な部品だけ置く
+            val box = (prefs.clockSize * w).toInt()
+            val handle = ClockHandle(context, editing).apply { tag = TAG_CLOCK }
+            root.addView(handle, place(size, prefs.clockX, prefs.clockY, box, box))
+        } else if (prefs.showClock) {
             val box = (prefs.clockSize * w).toInt()
             val style = prefs.clockStyle
             val (clock, boxH) = if (style == ClockStyle.BOLD) {

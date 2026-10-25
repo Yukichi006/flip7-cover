@@ -4,7 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
 
-enum class Mode { AURORA, PARTICLES, GIF, VIDEO, EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER }
+enum class Mode { AURORA, PARTICLES, GIF, VIDEO, EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
 
 enum class ClockStyle(val label: String) {
     DIGITAL("デジタル"),
