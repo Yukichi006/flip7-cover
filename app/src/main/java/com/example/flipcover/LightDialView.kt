@@ -44,7 +44,7 @@ class LightDialView(
         val reach = hypot(w.toFloat(), h.toFloat()) * 1.2f
         val stops = FloatArray(12) { it / 11f }
         val colors = IntArray(stops.size) { i ->
-            val a = exp(-(stops[i] * reach) / (clockR.coerceAtLeast(1f) * 0.75f))
+            val a = exp(-(stops[i] * reach) / (clockR.coerceAtLeast(1f) * DECAY))
             Color.argb((255 * a).toInt(), 236, 232, 224)
         }
         sectorPaint.shader = RadialGradient(clockCx, clockCy, reach, colors, stops, Shader.TileMode.CLAMP)
@@ -142,6 +142,11 @@ class LightDialView(
         stroke.alpha = alpha.coerceIn(0, 255)
         stroke.strokeWidth = w
         canvas.drawLine(x(deg, from), y(deg, from), x(deg, to), y(deg, to), stroke)
+    }
+
+    private companion object {
+        /** 光が弱まる距離（時計の半径に対する割合）。小さいほど中心の近くで暗くなる。 */
+        const val DECAY = 0.4f
     }
 
     private fun x(deg: Float, dist: Float) = clockCx + (sin(Math.toRadians(deg.toDouble())) * dist).toFloat()
