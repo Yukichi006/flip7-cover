@@ -114,6 +114,7 @@ object CoverContent {
         val r = if (prefs.showClock) box / 2f else 0f
         val cx = lp.leftMargin + box / 2f
         val cy = lp.topMargin + box / 2f
+        if (prefs.clockStyle.light) return LightDialView(context, cx, cy, r, prefs.glow)
         // 背景だけドット時計にして時計が別のデザインのときは、扇形にする
         val pattern = prefs.clockStyle.dial ?: DotDialView.Pattern.SECTOR
         return DotDialView(context, cx, cy, r, pattern, prefs.animSpeed,

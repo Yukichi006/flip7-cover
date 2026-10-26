@@ -5,8 +5,8 @@ import android.content.Context
 
 enum class Mode { EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
 
-/** [dial] があるものは、背景のドットで描く時計。 */
-enum class ClockStyle(val label: String, val dial: DotDialView.Pattern? = null) {
+/** [dial] があるものは背景のドットで、[light] のものは淡い光で、背景と一体に描く時計。 */
+enum class ClockStyle(val label: String, val dial: DotDialView.Pattern? = null, val light: Boolean = false) {
     DIGITAL("デジタル"),
     BOLD("ボールド（秒・日付つき）"),
     SIMPLE("シンプル"),
@@ -19,10 +19,11 @@ enum class ClockStyle(val label: String, val dial: DotDialView.Pattern? = null) 
     DIAL_TICKS("目盛りリング（背景と一体）", DotDialView.Pattern.TICKS),
     DIAL_SECTOR("扇形（背景と一体）", DotDialView.Pattern.SECTOR),
     DIAL_RADAR("レーダー（背景と一体）", DotDialView.Pattern.RADAR),
+    LIGHT_SECTOR("光の扇形（ドットなし・背景と一体）", light = true),
     ;
 
-    /** 背景のドットで描く時計か。 */
-    val integrated get() = dial != null
+    /** 背景と一体に描く時計か。 */
+    val integrated get() = dial != null || light
 }
 
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */

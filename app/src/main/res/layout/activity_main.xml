@@ -48,7 +48,7 @@
             android:layout_height="wrap_content">
 
             <RadioButton android:id="@+id/modeDotClock" android:layout_width="wrap_content"
-                android:layout_height="wrap_content" android:text="ドット時計（時計と一体）" />
+                android:layout_height="wrap_content" android:text="時計と一体（ドット時計・光の時計）" />
             <RadioButton android:id="@+id/modeDotWave" android:layout_width="wrap_content"
                 android:layout_height="wrap_content" android:text="ドットウェーブ" />
             <RadioButton android:id="@+id/modeDotSeconds" android:layout_width="wrap_content"
@@ -116,7 +116,7 @@
 
             <TextView
                 style="@style/FlipCover.Subsection"
-                android:text="ドット系の時計" />
+                android:text="背景と一体の時計" />
 
             <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/taperSwitch"

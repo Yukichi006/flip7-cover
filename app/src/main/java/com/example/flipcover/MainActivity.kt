@@ -104,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 背景を切り替える。ドット系の時計は背景と一体なので、時計と背景の組み合わせをそろえる。 */
+    /** 背景を切り替える。背景と一体の時計があるので、時計と背景の組み合わせをそろえる。 */
     private fun setMode(mode: Mode) {
         if (mode == Mode.DOT_CLOCK) {
             useDotClockBackground()
@@ -113,7 +113,7 @@ class MainActivity : AppCompatActivity() {
             prefs.mode = mode
             if (prefs.clockStyle.integrated) {
                 prefs.clockStyle = ClockStyle.SIMPLE
-                toast("ドット系の時計は背景と一体のため、時計を「シンプル」に切り替えました")
+                toast("この時計は背景と一体のため、時計を「シンプル」に切り替えました")
             }
         }
         refresh()
@@ -137,10 +137,10 @@ class MainActivity : AppCompatActivity() {
             .setTitle("時計のデザイン")
             .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.clockStyle)) { dialog, i ->
                 prefs.clockStyle = styles[i]
-                // ドット系の時計は背景と一体なので、背景もそろえる
+                // 背景と一体の時計を選んだら、背景もそろえる
                 if (styles[i].integrated && prefs.mode != Mode.DOT_CLOCK) {
                     useDotClockBackground()
-                    toast("背景を「ドット時計」に切り替えました")
+                    toast("背景を「時計と一体」に切り替えました")
                 } else if (!styles[i].integrated && prefs.mode == Mode.DOT_CLOCK) {
                     prefs.mode = Mode.DOT_WAVE
                     toast("背景を「ドットウェーブ」に切り替えました")
@@ -191,9 +191,14 @@ class MainActivity : AppCompatActivity() {
             }
         )
         findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
-        // ドット系の時計だけの設定は、選んでいるときだけ出す
+        // 背景と一体の時計だけの設定は、選んでいるときだけ出す。針のドットの設定は光の時計では使わない
+        val style = prefs.clockStyle
         findViewById<View>(R.id.dotOptions).visibility =
-            if (prefs.showClock && prefs.clockStyle.integrated) View.VISIBLE else View.GONE
+            if (prefs.showClock && style.integrated) View.VISIBLE else View.GONE
+        val dotOnly = if (style.dial != null) View.VISIBLE else View.GONE
+        for (id in intArrayOf(R.id.taperSwitch, R.id.boldMinuteSwitch, R.id.minuteTipSwitch)) {
+            findViewById<View>(id).visibility = dotOnly
+        }
 
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
