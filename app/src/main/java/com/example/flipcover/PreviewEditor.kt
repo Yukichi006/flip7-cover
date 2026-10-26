@@ -1,6 +1,7 @@
 package com.example.flipcover
 
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -140,7 +141,7 @@ class PreviewEditor(
         val h = size.height.toFloat()
         // ほかの部品の中心にも揃えられるようにする
         val others = (0 until root.childCount).map { root.getChildAt(it) }
-            .filter { it !== v && it.tag in MOVABLE }
+            .filter { it !== v && isMovable(it.tag) }
         val xs = GRID.map { it * w } + others.map { centerX(it) }
         val ys = GRID.map { it * h } + others.map { centerY(it) }
 
@@ -160,12 +161,15 @@ class PreviewEditor(
     private fun nearest(value: Float, targets: List<Float>, threshold: Float): Float? =
         targets.minByOrNull { abs(it - value) }?.takeIf { abs(it - value) <= threshold }
 
-    /** 指の下にある時計かアプリ列を探す。小さくても掴めるよう判定を少し広げる。 */
+    private fun isMovable(tag: Any?) =
+        tag is String && (tag in MOVABLE || tag.startsWith(CoverContent.TAG_APP_PREFIX))
+
+    /** 指の下にある時計やアプリアイコンを探す。小さくても掴めるよう判定を少し広げる。 */
     private fun hit(root: FrameLayout, x: Float, y: Float): View? {
-        val slop = size.width * 0.04f
+        val slop = size.width * 0.02f
         for (i in root.childCount - 1 downTo 0) {
             val v = root.getChildAt(i)
-            if (v.tag !in MOVABLE) continue
+            if (!isMovable(v.tag)) continue
             val l = v.left + v.translationX - slop
             val t = v.top + v.translationY - slop
             if (x >= l && x <= l + v.width + slop * 2 && y >= t && y <= t + v.height + slop * 2) return v
@@ -177,21 +181,23 @@ class PreviewEditor(
         val v = target ?: return
         val cx = ((v.left + v.translationX + v.width / 2f) / size.width).coerceIn(0f, 1f)
         val cy = ((v.top + v.translationY + v.height / 2f) / size.height).coerceIn(0f, 1f)
-        when (v.tag) {
-            CoverContent.TAG_CLOCK -> {
+        val tag = v.tag as? String ?: return
+        when {
+            tag.startsWith(CoverContent.TAG_APP_PREFIX) -> {
+                ComponentName.unflattenFromString(tag.removePrefix(CoverContent.TAG_APP_PREFIX))
+                    ?.let { prefs.setAppPosition(it, cx, cy) }
+                // 大きさはすべてのアイコンで共通
+                prefs.appsSize = (prefs.appsSize * pinch).coerceIn(0.05f, 0.25f)
+            }
+            tag == CoverContent.TAG_CLOCK -> {
                 prefs.clockX = cx
                 prefs.clockY = cy
                 prefs.clockSize = (prefs.clockSize * pinch).coerceIn(0.1f, 1f)
             }
-            CoverContent.TAG_DIGITAL -> {
+            tag == CoverContent.TAG_DIGITAL -> {
                 prefs.digitalX = cx
                 prefs.digitalY = cy
                 prefs.digitalSize = (prefs.digitalSize * pinch).coerceIn(0.15f, 1f)
-            }
-            CoverContent.TAG_APPS -> {
-                prefs.appsX = cx
-                prefs.appsY = cy
-                prefs.appsSize = (prefs.appsSize * pinch).coerceIn(0.05f, 0.25f)
             }
         }
         onChanged()
@@ -199,17 +205,17 @@ class PreviewEditor(
 
     private companion object {
         /** ドラッグで動かせる部品。 */
-        val MOVABLE: Set<Any?> = setOf(CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_APPS)
+        val MOVABLE = setOf(CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL)
 
-        /** 吸い付く位置（画面に対する割合）。 */
-        val GRID = listOf(0.25f, 1 / 3f, 0.5f, 2 / 3f, 0.75f)
+        /** 吸い付く位置（画面に対する割合）。12 等分なので、2・3・4・6 分割の線も含む。 */
+        val GRID = (1 until 12).map { it / 12f }
 
-        /** 吸い付く距離（画面幅に対する割合）。 */
-        const val SNAP = 0.025f
+        /** 吸い付く距離（画面幅に対する割合）。線が細かいので短めにする。 */
+        const val SNAP = 0.018f
     }
 }
 
-/** ドラッグ中に格子線を薄く表示し、吸い付いた線を強調する。 */
+/** ドラッグ中に格子線を薄く表示し（中央の線は少し濃く）、吸い付いた線を強調する。 */
 private class GridGuide(context: Context, private val grid: List<Float>) : View(context) {
     var dragging = false
         set(v) { field = v; invalidate() }
@@ -218,18 +224,21 @@ private class GridGuide(context: Context, private val grid: List<Float>) : View(
     var snapY: Float? = null
         set(v) { if (field != v) { field = v; invalidate() } }
 
-    private val faint = Paint().apply { color = 0x40FFFFFF }
+    private val faint = Paint().apply { color = 0x30FFFFFF }
+    private val center = Paint().apply { color = 0x70FFFFFF }
     private val strong = Paint().apply { color = 0xFF22D3EE.toInt() }
 
     override fun onDraw(canvas: Canvas) {
         if (!dragging) return
         val w = width.toFloat()
         val h = height.toFloat()
-        faint.strokeWidth = w * 0.004f
+        faint.strokeWidth = w * 0.003f
+        center.strokeWidth = w * 0.005f
         strong.strokeWidth = w * 0.007f
         for (f in grid) {
-            canvas.drawLine(f * w, 0f, f * w, h, faint)
-            canvas.drawLine(0f, f * h, w, f * h, faint)
+            val p = if (f == 0.5f) center else faint
+            canvas.drawLine(f * w, 0f, f * w, h, p)
+            canvas.drawLine(0f, f * h, w, f * h, p)
         }
         snapX?.let { canvas.drawLine(it, 0f, it, h, strong) }
         snapY?.let { canvas.drawLine(0f, it, w, it, strong) }

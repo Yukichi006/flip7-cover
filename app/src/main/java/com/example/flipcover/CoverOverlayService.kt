@@ -34,6 +34,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private var dismissedUntilReopen = false
     private var coverDisplayId = Display.INVALID_DISPLAY
 
+    /** カバー画面で起動中のアプリ。その画面が出たらオーバーレイを消す。 */
+    private var launchingPackage: String? = null
+
     override fun onServiceConnected() {
         prefs = Prefs(this)
         prefs.registerListener(this)
@@ -67,6 +70,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
 
         if (!folded) {
             dismissedUntilReopen = false
+            // 起動待ちのまま開いたときは、次に閉じたときの表示を消してしまわないよう取り消す
+            launchingPackage = null
+            handler.removeCallbacks(fadeOut)
             hide()
             return
         }
@@ -108,7 +114,11 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         }
     }
 
-    /** アプリをカバー画面上で起動し、邪魔にならないようオーバーレイを閉じる。 */
+    /**
+     * アプリをカバー画面上で起動する。
+     * すぐにオーバーレイを消すと、アプリが出るまでの間に元のカバー画面が見えてしまうので、
+     * アプリの画面が出たのを確かめてから（出なくても少し待ってから）フェードアウトして消す。
+     */
     private fun launch(component: ComponentName) {
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -118,7 +128,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         runCatching { startActivity(intent, options.toBundle()) }
             .onSuccess {
                 dismissedUntilReopen = true
-                hide()
+                launchingPackage = component.packageName
+                handler.removeCallbacks(fadeOut)
+                handler.postDelayed(fadeOut, LAUNCH_TIMEOUT_MS)
             }
             .onFailure { Toast.makeText(this, "起動できませんでした: ${it.message}", Toast.LENGTH_LONG).show() }
     }
@@ -129,10 +141,26 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         overlayWm = null
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    private val fadeOut = Runnable {
+        launchingPackage = null
+        val v = overlay ?: return@Runnable
+        v.animate().alpha(0f).setDuration(150).withEndAction { if (overlay === v) hide() }.start()
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val pkg = launchingPackage ?: return
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.packageName?.toString() == pkg) {
+            // 最初の画面が描かれるのを少しだけ待ってから消す
+            handler.removeCallbacks(fadeOut)
+            handler.postDelayed(fadeOut, 120)
+        }
+    }
     override fun onInterrupt() {}
 
     companion object {
+        /** アプリの画面が出たことが分からなくても、この時間でオーバーレイを消す。 */
+        private const val LAUNCH_TIMEOUT_MS = 1500L
+
         /**
          * Galaxy Z Flip のカバー画面は通常 displayId=1 の内蔵ディスプレイとして見える。
          * 見つからない場合は既定以外のディスプレイを探す。

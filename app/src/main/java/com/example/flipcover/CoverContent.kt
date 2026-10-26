@@ -15,7 +15,6 @@ import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextClock
 import java.util.Calendar
 import kotlin.math.cos
@@ -28,7 +27,8 @@ import kotlin.math.sin
  */
 object CoverContent {
     const val TAG_CLOCK = "clock"
-    const val TAG_APPS = "apps"
+    /** アプリアイコンのタグの頭。後ろにアプリの名前（ComponentName）を付ける。 */
+    const val TAG_APP_PREFIX = "app:"
     const val TAG_DIGITAL = "digital"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
@@ -99,11 +99,7 @@ object CoverContent {
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
         }
 
-        val icon = (prefs.appsSize * w).toInt()
-        appRow(context, prefs.apps, icon, onLaunch)?.let { row ->
-            row.tag = TAG_APPS
-            root.addView(row, place(size, prefs.appsX, prefs.appsY, row.childCount * icon, icon))
-        }
+        addApps(context, root, size, prefs, onLaunch)
         return root
     }
 
@@ -143,18 +139,23 @@ object CoverContent {
             topMargin = (cy * size.height - vh / 2f).toInt().coerceIn(0, maxOf(0, size.height - vh))
         }
 
-    private fun appRow(
-        context: Context,
-        apps: List<ComponentName>,
-        iconSize: Int,
-        onLaunch: ((ComponentName) -> Unit)?,
-    ): LinearLayout? {
+    /**
+     * アプリアイコンを 1 個ずつ置く。動かしたことのあるアイコンはその位置に、
+     * まだのものは横一列に並べた位置に置く。
+     */
+    private fun addApps(
+        context: Context, root: FrameLayout, size: Size, prefs: Prefs, onLaunch: ((ComponentName) -> Unit)?,
+    ) {
         val pm = context.packageManager
-        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        for (cn in apps) {
-            // アンインストール済みのアプリは飛ばす
-            val icon = runCatching { pm.getActivityIcon(cn) }.getOrNull() ?: continue
+        val iconSize = (prefs.appsSize * size.width).toInt()
+        // アンインストール済みのアプリは飛ばす
+        val apps = prefs.apps.mapNotNull { cn -> runCatching { pm.getActivityIcon(cn) }.getOrNull()?.let { cn to it } }
+        apps.forEachIndexed { i, (cn, icon) ->
+            val pos = prefs.appPosition(cn)
+            val x = pos?.x ?: (prefs.appsX + (i - (apps.size - 1) / 2f) * prefs.appsSize)
+            val y = pos?.y ?: prefs.appsY
             val iv = ImageView(context).apply {
+                tag = TAG_APP_PREFIX + cn.flattenToString()
                 setImageDrawable(icon)
                 contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
                 val pad = iconSize / 9
@@ -162,9 +163,8 @@ object CoverContent {
                 // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
                 if (onLaunch != null) setOnClickListener { onLaunch(cn) }
             }
-            row.addView(iv, LinearLayout.LayoutParams(iconSize, iconSize))
+            root.addView(iv, place(size, x, y, iconSize, iconSize))
         }
-        return if (row.childCount > 0) row else null
     }
 }
 

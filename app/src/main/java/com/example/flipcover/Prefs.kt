@@ -2,6 +2,7 @@ package com.example.flipcover
 
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.PointF
 
 enum class Mode { EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
 
@@ -93,12 +94,11 @@ class Prefs(context: Context) {
     var clockSize: Float
         get() = sp.getFloat("clockSize", 0.35f)
         set(v) = sp.edit().putFloat("clockSize", v).apply()
-    var appsX: Float
+    /** アイコンをまだ動かしていないときに並べる列の中心。 */
+    val appsX: Float
         get() = sp.getFloat("appsX", 0.5f)
-        set(v) = sp.edit().putFloat("appsX", v).apply()
-    var appsY: Float
+    val appsY: Float
         get() = sp.getFloat("appsY", 0.75f)
-        set(v) = sp.edit().putFloat("appsY", v).apply()
     var appsSize: Float
         get() = sp.getFloat("appsSize", 0.11f)
         set(v) = sp.edit().putFloat("appsSize", v).apply()
@@ -117,7 +117,25 @@ class Prefs(context: Context) {
         .remove("clockX").remove("clockY").remove("clockSize")
         .remove("appsX").remove("appsY").remove("appsSize")
         .remove("digitalX").remove("digitalY").remove("digitalSize")
+        .remove("appPositions")
         .apply()
+
+    /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */
+    fun appPosition(app: ComponentName): PointF? = appPositions()[app.flattenToString()]
+
+    fun setAppPosition(app: ComponentName, x: Float, y: Float) {
+        val all = appPositions().toMutableMap()
+        all[app.flattenToString()] = PointF(x, y)
+        sp.edit().putString("appPositions", all.entries.joinToString("|") { (k, p) -> "$k=${p.x},${p.y}" }).apply()
+    }
+
+    private fun appPositions(): Map<String, PointF> =
+        sp.getString("appPositions", null).orEmpty().split('|').mapNotNull { entry ->
+            val (key, value) = entry.split('=').takeIf { it.size == 2 } ?: return@mapNotNull null
+            val (x, y) = value.split(',').mapNotNull { it.toFloatOrNull() }.takeIf { it.size == 2 }
+                ?: return@mapNotNull null
+            key to PointF(x, y)
+        }.toMap()
 
     /** カバー画面に並べるアプリ（表示順）。 */
     var apps: List<ComponentName>
