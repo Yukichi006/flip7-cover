@@ -91,15 +91,8 @@ class LightDialView(
         }
     }
 
-    /** 文字盤の縁と、12・3・6・9 時の位置をかすかな光で示す。 */
+    /** 12・3・6・9 時の位置をかすかな光で示す（丸い枠は描かない）。 */
     private fun drawDial(canvas: Canvas, r: Float) {
-        stroke.color = Gear.ON
-        stroke.alpha = 18
-        stroke.strokeWidth = r * 0.04f
-        canvas.drawCircle(clockCx, clockCy, r, stroke)
-        stroke.alpha = 40
-        stroke.strokeWidth = r * 0.012f
-        canvas.drawCircle(clockCx, clockCy, r, stroke)
         for (k in 0 until 4) {
             line(canvas, k * 90f, r * 0.86f, r * 0.97f, r * 0.06f, Gear.ON, 40)
             line(canvas, k * 90f, r * 0.86f, r * 0.97f, r * 0.03f, Gear.ON, 115)
