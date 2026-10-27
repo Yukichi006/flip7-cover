@@ -168,6 +168,18 @@
             android:layout_marginTop="4dp"
             android:text="アプリを選ぶ" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/launcherSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ボタンにまとめる（タップで展開）" />
+
+        <Button
+            android:id="@+id/launcherStyle"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
         <!-- プレビュー -->
         <TextView
             style="@style/FlipCover.Section"

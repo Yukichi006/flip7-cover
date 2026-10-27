@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
+        bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
+        findViewById<Button>(R.id.launcherStyle).setOnClickListener { pickLauncherStyle() }
 
         val speedLabel = findViewById<TextView>(R.id.speedLabel)
         findViewById<Slider>(R.id.speedSlider).apply {
@@ -151,6 +153,18 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun pickLauncherStyle() {
+        val styles = LauncherStyle.entries
+        MaterialAlertDialogBuilder(this)
+            .setTitle("ボタンのデザイン")
+            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.launcherStyle)) { dialog, i ->
+                prefs.launcherStyle = styles[i]
+                refresh()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
     private fun pickApps() {
         val pm = packageManager
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -200,6 +214,10 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(id).visibility = dotOnly
         }
 
+        findViewById<Button>(R.id.launcherStyle).apply {
+            text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
+            visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
+        }
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
         }.joinToString("、").ifEmpty { "なし" }

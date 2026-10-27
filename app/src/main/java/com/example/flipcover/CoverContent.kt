@@ -30,6 +30,7 @@ object CoverContent {
     /** アプリアイコンのタグの頭。後ろにアプリの名前（ComponentName）を付ける。 */
     const val TAG_APP_PREFIX = "app:"
     const val TAG_DIGITAL = "digital"
+    const val TAG_LAUNCHER = "launcher"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -99,7 +100,7 @@ object CoverContent {
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
         }
 
-        addApps(context, root, size, prefs, onLaunch)
+        addApps(context, root, size, prefs, onLaunch, editing)
         return root
     }
 
@@ -142,15 +143,27 @@ object CoverContent {
     /**
      * アプリアイコンを 1 個ずつ置く。動かしたことのあるアイコンはその位置に、
      * まだのものは横一列に並べた位置に置く。
+     * ボタンにまとめる設定なら、ふだんはボタンだけを見せ、タップでアイコンを展開する
+     * （プレビューでは位置を調整できるよう、ボタンとアイコンを両方見せる）。
      */
     private fun addApps(
-        context: Context, root: FrameLayout, size: Size, prefs: Prefs, onLaunch: ((ComponentName) -> Unit)?,
+        context: Context, root: FrameLayout, size: Size, prefs: Prefs,
+        onLaunch: ((ComponentName) -> Unit)?, editing: Boolean,
     ) {
         val pm = context.packageManager
         val iconSize = (prefs.appsSize * size.width).toInt()
         // アンインストール済みのアプリは飛ばす
         val apps = prefs.apps.mapNotNull { cn -> runCatching { pm.getActivityIcon(cn) }.getOrNull()?.let { cn to it } }
-        apps.forEachIndexed { i, (cn, icon) ->
+        if (apps.isEmpty()) return
+        val launcher = prefs.useLauncher
+
+        // 開いたときにアイコンの後ろを暗くする幕
+        val scrim = if (launcher && !editing) View(context).apply {
+            setBackgroundColor(0xB01C1C1A.toInt())
+            root.addView(this, FrameLayout.LayoutParams(-1, -1))
+        } else null
+
+        val icons = apps.mapIndexed { i, (cn, icon) ->
             val pos = prefs.appPosition(cn)
             val x = pos?.x ?: (prefs.appsX + (i - (apps.size - 1) / 2f) * prefs.appsSize)
             val y = pos?.y ?: prefs.appsY
@@ -164,7 +177,14 @@ object CoverContent {
                 if (onLaunch != null) setOnClickListener { onLaunch(cn) }
             }
             root.addView(iv, place(size, x, y, iconSize, iconSize))
+            iv
         }
+
+        if (!launcher) return
+        val buttonSize = (prefs.launcherSize * size.width).toInt()
+        val button = LauncherButton(context, prefs.launcherStyle).apply { tag = TAG_LAUNCHER }
+        root.addView(button, place(size, prefs.launcherX, prefs.launcherY, buttonSize, buttonSize))
+        if (scrim != null) AppLauncher(button, scrim, icons)
     }
 }
 

@@ -94,6 +94,27 @@ class Prefs(context: Context) {
     var clockSize: Float
         get() = sp.getFloat("clockSize", 0.35f)
         set(v) = sp.edit().putFloat("clockSize", v).apply()
+    /** アプリをボタンにまとめ、タップで展開する。オフならアイコンを常に表示する。 */
+    var useLauncher: Boolean
+        get() = sp.getBoolean("useLauncher", true)
+        set(v) = sp.edit().putBoolean("useLauncher", v).apply()
+
+    var launcherStyle: LauncherStyle
+        get() = runCatching { LauncherStyle.valueOf(sp.getString("launcherStyle", null)!!) }
+            .getOrDefault(LauncherStyle.DOTS)
+        set(v) = sp.edit().putString("launcherStyle", v.name).apply()
+
+    // 最初はカメラと重ならない左下に置く
+    var launcherX: Float
+        get() = sp.getFloat("launcherX", 0.13f)
+        set(v) = sp.edit().putFloat("launcherX", v).apply()
+    var launcherY: Float
+        get() = sp.getFloat("launcherY", 0.89f)
+        set(v) = sp.edit().putFloat("launcherY", v).apply()
+    var launcherSize: Float
+        get() = sp.getFloat("launcherSize", 0.13f)
+        set(v) = sp.edit().putFloat("launcherSize", v).apply()
+
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
     val appsX: Float
         get() = sp.getFloat("appsX", 0.5f)
@@ -118,6 +139,7 @@ class Prefs(context: Context) {
         .remove("appsX").remove("appsY").remove("appsSize")
         .remove("digitalX").remove("digitalY").remove("digitalSize")
         .remove("appPositions")
+        .remove("launcherX").remove("launcherY").remove("launcherSize")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */
