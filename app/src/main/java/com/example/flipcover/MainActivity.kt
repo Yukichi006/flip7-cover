@@ -21,6 +21,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var editor: PreviewEditor
     private lateinit var modeGroup: RadioGroup
 
+    /** プレビューで、ボタンを開いたときの様子を見せる（保存しない、画面だけの切り替え）。 */
+    private var expandedPreview = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -66,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
+        bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
         findViewById<Button>(R.id.launcherStyle).setOnClickListener { pickLauncherStyle() }
 
         val speedLabel = findViewById<TextView>(R.id.speedLabel)
@@ -225,7 +229,10 @@ class MainActivity : AppCompatActivity() {
         val cover = CoverOverlayService.findCoverDisplay(getSystemService(DisplayManager::class.java))
         val size = CoverContent.coverSize(cover)
         val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
-        editor.show(CoverContent.create(this, prefs, size, editing = true), size, cutouts)
+        findViewById<View>(R.id.expandedPreviewSwitch).visibility =
+            if (prefs.useLauncher && prefs.apps.isNotEmpty()) View.VISIBLE else View.GONE
+        val showExpanded = expandedPreview && prefs.useLauncher
+        editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = showExpanded), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text =
             if (isServiceEnabled()) "✅ サービス有効" else "⚠️ ユーザー補助で「FlipCover」をオンにしてください"
@@ -256,6 +263,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val MAX_APPS = 5
+        private const val MAX_APPS = 16
     }
 }

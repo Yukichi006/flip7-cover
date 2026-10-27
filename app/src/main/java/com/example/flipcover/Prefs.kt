@@ -115,6 +115,21 @@ class Prefs(context: Context) {
         get() = sp.getFloat("launcherSize", 0.13f)
         set(v) = sp.edit().putFloat("launcherSize", v).apply()
 
+    // ボタンで展開したときにアイコンを並べるグリッドの範囲（中心と幅・高さ、画面に対する割合）。
+    // 最初は、カメラのある下の帯を避けて画面いっぱいに広げる
+    var gridCx: Float
+        get() = sp.getFloat("gridCx", 0.5f)
+        set(v) = sp.edit().putFloat("gridCx", v).apply()
+    var gridCy: Float
+        get() = sp.getFloat("gridCy", 0.42f)
+        set(v) = sp.edit().putFloat("gridCy", v).apply()
+    var gridW: Float
+        get() = sp.getFloat("gridW", 0.92f)
+        set(v) = sp.edit().putFloat("gridW", v).apply()
+    var gridH: Float
+        get() = sp.getFloat("gridH", 0.76f)
+        set(v) = sp.edit().putFloat("gridH", v).apply()
+
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
     val appsX: Float
         get() = sp.getFloat("appsX", 0.5f)
@@ -140,6 +155,7 @@ class Prefs(context: Context) {
         .remove("digitalX").remove("digitalY").remove("digitalSize")
         .remove("appPositions")
         .remove("launcherX").remove("launcherY").remove("launcherSize")
+        .remove("gridCx").remove("gridCy").remove("gridW").remove("gridH")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */

@@ -194,6 +194,12 @@ class PreviewEditor(
                 prefs.clockY = cy
                 prefs.clockSize = (prefs.clockSize * pinch).coerceIn(0.1f, 1f)
             }
+            tag == CoverContent.TAG_APP_GRID -> {
+                prefs.gridCx = cx
+                prefs.gridCy = cy
+                prefs.gridW = (prefs.gridW * pinch).coerceIn(0.3f, 1f)
+                prefs.gridH = (prefs.gridH * pinch).coerceIn(0.3f, 1f)
+            }
             tag == CoverContent.TAG_LAUNCHER -> {
                 prefs.launcherX = cx
                 prefs.launcherY = cy
@@ -210,7 +216,9 @@ class PreviewEditor(
 
     private companion object {
         /** ドラッグで動かせる部品。 */
-        val MOVABLE = setOf(CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_LAUNCHER)
+        val MOVABLE = setOf(
+            CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_LAUNCHER, CoverContent.TAG_APP_GRID,
+        )
 
         /** 吸い付く位置（画面に対する割合）。12 等分なので、2・3・4・6 分割の線も含む。 */
         val GRID = (1 until 12).map { it / 12f }

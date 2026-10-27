@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.util.Size
 import android.util.TypedValue
 import android.view.Display
@@ -31,6 +32,7 @@ object CoverContent {
     const val TAG_APP_PREFIX = "app:"
     const val TAG_DIGITAL = "digital"
     const val TAG_LAUNCHER = "launcher"
+    const val TAG_APP_GRID = "appGrid"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -42,6 +44,7 @@ object CoverContent {
     /**
      * [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。
      * [editing] はプレビューで編集しているときに true にする。
+     * [expandedPreview] はプレビューで、ボタンを開いたときの様子を見せるときに true にする。
      */
     fun create(
         context: Context,
@@ -49,6 +52,7 @@ object CoverContent {
         size: Size,
         onLaunch: ((ComponentName) -> Unit)? = null,
         editing: Boolean = false,
+        expandedPreview: Boolean = false,
     ): FrameLayout {
         val w = size.width
         val h = size.height
@@ -100,7 +104,7 @@ object CoverContent {
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
         }
 
-        addApps(context, root, size, prefs, onLaunch, editing)
+        addApps(context, root, size, prefs, onLaunch, editing, expandedPreview)
         return root
     }
 
@@ -141,51 +145,86 @@ object CoverContent {
         }
 
     /**
-     * アプリアイコンを 1 個ずつ置く。動かしたことのあるアイコンはその位置に、
-     * まだのものは横一列に並べた位置に置く。
-     * ボタンにまとめる設定なら、ふだんはボタンだけを見せ、タップでアイコンを展開する
-     * （プレビューでは位置を調整できるよう、ボタンとアイコンを両方見せる）。
+     * カバー画面のアプリアイコンを置く。
+     *
+     * ボタンにまとめる設定なら、ふだんはボタンだけを見せ、タップで「グリッドの範囲」に
+     * 4 列のアイコンを展開する。プレビューでは [expandedPreview] のときだけ展開した様子を見せ、
+     * グリッドの範囲ごとドラッグ・ピンチで調整できるようにする。
+     * まとめない設定なら、アイコンを 1 個ずつ自由な位置に常に表示する。
      */
     private fun addApps(
         context: Context, root: FrameLayout, size: Size, prefs: Prefs,
-        onLaunch: ((ComponentName) -> Unit)?, editing: Boolean,
+        onLaunch: ((ComponentName) -> Unit)?, editing: Boolean, expandedPreview: Boolean,
     ) {
         val pm = context.packageManager
-        val iconSize = (prefs.appsSize * size.width).toInt()
         // アンインストール済みのアプリは飛ばす
         val apps = prefs.apps.mapNotNull { cn -> runCatching { pm.getActivityIcon(cn) }.getOrNull()?.let { cn to it } }
         if (apps.isEmpty()) return
-        val launcher = prefs.useLauncher
 
+        fun iconView(cn: ComponentName, icon: android.graphics.drawable.Drawable, iconSize: Int) = ImageView(context).apply {
+            setImageDrawable(icon)
+            contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
+            val pad = iconSize / 9
+            setPadding(pad, pad, pad, pad)
+            // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
+            if (onLaunch != null) setOnClickListener { onLaunch(cn) }
+        }
+
+        if (!prefs.useLauncher) {
+            val iconSize = (prefs.appsSize * size.width).toInt()
+            apps.forEachIndexed { i, (cn, icon) ->
+                val pos = prefs.appPosition(cn)
+                val x = pos?.x ?: (prefs.appsX + (i - (apps.size - 1) / 2f) * prefs.appsSize)
+                val y = pos?.y ?: prefs.appsY
+                val iv = iconView(cn, icon, iconSize).apply { tag = TAG_APP_PREFIX + cn.flattenToString() }
+                root.addView(iv, place(size, x, y, iconSize, iconSize))
+            }
+            return
+        }
+
+        val showOpen = editing && expandedPreview
         // 開いたときにアイコンの後ろを暗くする幕
-        val scrim = if (launcher && !editing) View(context).apply {
+        val scrim = if (!editing || showOpen) View(context).apply {
             setBackgroundColor(0xB01C1C1A.toInt())
             root.addView(this, FrameLayout.LayoutParams(-1, -1))
         } else null
 
-        val icons = apps.mapIndexed { i, (cn, icon) ->
-            val pos = prefs.appPosition(cn)
-            val x = pos?.x ?: (prefs.appsX + (i - (apps.size - 1) / 2f) * prefs.appsSize)
-            val y = pos?.y ?: prefs.appsY
-            val iv = ImageView(context).apply {
-                tag = TAG_APP_PREFIX + cn.flattenToString()
-                setImageDrawable(icon)
-                contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
-                val pad = iconSize / 9
-                setPadding(pad, pad, pad, pad)
-                // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
-                if (onLaunch != null) setOnClickListener { onLaunch(cn) }
+        // グリッドの範囲にアイコンを 4 列で並べる
+        val gw = (prefs.gridW * size.width).toInt()
+        val gh = (prefs.gridH * size.height).toInt()
+        val rows = (apps.size + GRID_COLUMNS - 1) / GRID_COLUMNS
+        val cellW = gw / GRID_COLUMNS.toFloat()
+        val cellH = gh / maxOf(rows, GRID_COLUMNS).toFloat()
+        val iconSize = (min(cellW, cellH) * 0.8f).toInt()
+        val grid = FrameLayout(context).apply {
+            tag = TAG_APP_GRID
+            if (showOpen) background = GradientDrawable().apply {
+                setStroke(4, 0x66FFFFFF, 14f, 10f)
+                cornerRadius = 16f
             }
-            root.addView(iv, place(size, x, y, iconSize, iconSize))
-            iv
         }
+        val icons = apps.mapIndexed { i, (cn, icon) ->
+            val col = i % GRID_COLUMNS
+            val row = i / GRID_COLUMNS
+            iconView(cn, icon, iconSize).also { iv ->
+                grid.addView(iv, FrameLayout.LayoutParams(iconSize, iconSize).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    leftMargin = (cellW * (col + 0.5f) - iconSize / 2f).toInt()
+                    topMargin = (cellH * (row + 0.5f) - iconSize / 2f).toInt()
+                })
+            }
+        }
+        if (!editing || showOpen) root.addView(grid, place(size, prefs.gridCx, prefs.gridCy, gw, gh))
 
-        if (!launcher) return
         val buttonSize = (prefs.launcherSize * size.width).toInt()
         val button = LauncherButton(context, prefs.launcherStyle).apply { tag = TAG_LAUNCHER }
         root.addView(button, place(size, prefs.launcherX, prefs.launcherY, buttonSize, buttonSize))
-        if (scrim != null) AppLauncher(button, scrim, icons)
+        if (showOpen) button.showOpen()
+        if (!editing && scrim != null) AppLauncher(button, scrim, grid, icons)
     }
+
+    /** 展開したときのグリッドの列数。 */
+    private const val GRID_COLUMNS = 4
 }
 
 /** 時計の後ろに敷く、輪郭をぼかした暗い楕円。背景が明るくても時刻を読みやすくする。 */

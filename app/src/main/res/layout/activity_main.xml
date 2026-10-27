@@ -191,6 +191,12 @@
             android:text="ドラッグで移動、2本指で拡大・縮小できます。赤い枠はカメラの位置です。"
             android:textSize="12sp" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/expandedPreviewSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ボタンを開いたときの配置を表示" />
+
         <!-- Flip7 のカバー画面 (948x1048) と同じ比率 -->
         <FrameLayout
             android:id="@+id/preview"

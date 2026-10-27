@@ -41,6 +41,12 @@ class LauncherButton(context: Context, private val style: LauncherStyle) : View(
     }
     private val rect = RectF()
 
+    /** アニメーションせず、開いた見た目にする（プレビュー用）。 */
+    fun showOpen() {
+        animator?.cancel()
+        openness = 1f
+    }
+
     fun animateOpen(open: Boolean) {
         animator?.cancel()
         animator = ValueAnimator.ofFloat(openness, if (open) 1f else 0f).apply {
@@ -135,6 +141,7 @@ class LauncherButton(context: Context, private val style: LauncherStyle) : View(
 class AppLauncher(
     private val button: LauncherButton,
     private val scrim: View,
+    private val grid: View,
     private val icons: List<View>,
 ) {
     private var open = false
@@ -152,8 +159,9 @@ class AppLauncher(
         open = value
         button.animateOpen(value)
         button.removeCallbacks(autoClose)
-        val bx = button.left + button.width / 2f
-        val by = button.top + button.height / 2f
+        // アイコンはグリッドの中にあるので、ボタンの中心をグリッドの座標に直して使う
+        val bx = button.left + button.width / 2f - grid.left
+        val by = button.top + button.height / 2f - grid.top
         if (value) {
             scrim.alpha = 0f
             scrim.visibility = View.VISIBLE
