@@ -3,11 +3,13 @@ package com.example.flipcover
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ComposeShader
+import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.PorterDuff
 import android.graphics.RadialGradient
-import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.SweepGradient
 import android.view.View
 import java.util.Calendar
 import kotlin.math.cos
@@ -35,19 +37,22 @@ class LightDialView(
         strokeCap = Paint.Cap.ROUND
     }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val sectorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val sectorPath = Path()
-    private val oval = RectF()
+    // ディザをかけて、8bit の色の段差（縞）を細かい粒に散らす
+    private val sectorPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+    private var radial: Shader? = null
+    private val sweepMatrix = Matrix().apply { setRotate(-90f, clockCx, clockCy) }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        // 中心が一番明るく、離れるほど指数的に弱くなる光
+        // 中心が一番明るく、離れるほど指数的に弱くなる光。
+        // 色の段数を細かく取り、明るさも最初から色に含めて 1 回で塗る（重ね塗りすると段差が目立つ）
         val reach = hypot(w.toFloat(), h.toFloat()) * 1.2f
-        val stops = FloatArray(12) { it / 11f }
+        val total = (0.3f + 0.4f * glow).coerceIn(0f, 1f)
+        val stops = FloatArray(64) { it / 63f }
         val colors = IntArray(stops.size) { i ->
             val a = exp(-(stops[i] * reach) / (clockR.coerceAtLeast(1f) * DECAY))
-            Color.argb((255 * a).toInt(), 236, 232, 224)
+            Color.argb((255 * total * a).toInt(), 236, 232, 224)
         }
-        sectorPaint.shader = RadialGradient(clockCx, clockCy, reach, colors, stops, Shader.TileMode.CLAMP)
+        radial = RadialGradient(clockCx, clockCy, reach, colors, stops, Shader.TileMode.CLAMP)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -70,25 +75,23 @@ class LightDialView(
     }
 
     /**
-     * 12 時から [deg] までの扇形を、画面の外まで届く大きさで描く。
-     * 少しずつ広げた扇形を薄く重ねて、縁をぼかす。
+     * 12 時から [deg] までの扇形の光を画面全体に描く。
+     * 放射状の光を、縁がなめらかに消える角度のマスクで切り抜いて 1 回で塗る。
      */
     private fun drawSector(canvas: Canvas, deg: Float) {
+        val light = radial ?: return
         if (deg < 0.5f) return
-        val big = hypot(width.toFloat(), height.toFloat()) * 2f
-        oval.set(clockCx - big, clockCy - big, clockCx + big, clockCy + big)
-        val layers = 6
-        val feather = 0.6f
-        val total = (0.3f + 0.4f * glow).coerceIn(0f, 1f)
-        sectorPaint.alpha = (255 * total / layers).toInt()
-        for (k in 0 until layers) {
-            sectorPath.reset()
-            sectorPath.moveTo(clockCx, clockCy)
-            // 360° 以上を渡すと 0° 扱いになるので、少し手前で止める
-            sectorPath.arcTo(oval, -90f - k * feather, (deg + 2 * k * feather).coerceAtMost(359.9f))
-            sectorPath.close()
-            canvas.drawPath(sectorPath, sectorPaint)
-        }
+        // 扇形の外側へ FEATHER 度かけて消える。残りが狭いときは両側の縁がぶつからないよう縮める
+        val f = FEATHER.coerceAtMost((360f - deg) / 2f)
+        val mask = SweepGradient(
+            clockCx, clockCy,
+            intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT, Color.WHITE),
+            floatArrayOf(0f, deg / 360f, (deg + f) / 360f, (360f - f) / 360f, 1f),
+        )
+        // 掃引の始まりを 3 時から 12 時へ回す
+        mask.setLocalMatrix(sweepMatrix)
+        sectorPaint.shader = ComposeShader(light, mask, PorterDuff.Mode.DST_IN)
+        canvas.drawPaint(sectorPaint)
     }
 
     /** 12・3・6・9 時の位置をかすかな光で示す（丸い枠は描かない）。 */
@@ -147,6 +150,9 @@ class LightDialView(
     private companion object {
         /** 光が弱まる距離（時計の半径に対する割合）。小さいほど中心の近くで暗くなる。 */
         const val DECAY = 0.4f
+
+        /** 扇形の縁をぼかす角度（度）。 */
+        const val FEATHER = 3f
     }
 
     private fun x(deg: Float, dist: Float) = clockCx + (sin(Math.toRadians(deg.toDouble())) * dist).toFloat()
