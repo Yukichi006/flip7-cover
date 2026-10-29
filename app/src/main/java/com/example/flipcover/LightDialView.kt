@@ -4,13 +4,16 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ComposeShader
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.view.View
+import androidx.core.graphics.ColorUtils
 import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.exp
@@ -37,6 +40,9 @@ class LightDialView(
         strokeCap = Paint.Cap.ROUND
     }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    // 光は縁まで透明に消えるので、つなぎ目に細い筋が出ないよう縁のなめらか処理はかけない
+    private val glowPaint = Paint(Paint.DITHER_FLAG)
+    private val glowOval = RectF()
     // ディザをかけて、8bit の色の段差（縞）を細かい粒に散らす
     private val sectorPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
     private var radial: Shader? = null
@@ -94,28 +100,93 @@ class LightDialView(
         canvas.drawPaint(sectorPaint)
     }
 
-    /** 12・3・6・9 時の位置をかすかな光で示す（丸い枠は描かない）。 */
+    /**
+     * 12・3・6・9 時の位置を、ふんわりにじむ光の中に細い芯が通った短い線で示す（丸い枠は描かない）。
+     * 12 時だけ少し長くして、向きが分かるようにする。
+     */
     private fun drawDial(canvas: Canvas, r: Float) {
         for (k in 0 until 4) {
-            line(canvas, k * 90f, r * 0.86f, r * 0.97f, r * 0.06f, Gear.ON, 40)
-            line(canvas, k * 90f, r * 0.86f, r * 0.97f, r * 0.03f, Gear.ON, 115)
+            val from = if (k == 0) r * 0.82f else r * 0.86f
+            drawGlow(canvas, k * 90f, from, r * 0.96f, tickGlow)
+            line(canvas, k * 90f, from, r * 0.96f, r * 0.012f, Gear.ON, 235)
         }
     }
 
     private fun drawMinute(canvas: Canvas, r: Float, deg: Float) {
-        // 暗い縁で扇形の光から切り離し、その上に白い光の線を重ねる
+        // 暗い縁で扇形の光から切り離し、その上に光の帯と白い芯を重ねる
         line(canvas, deg, 0f, r * 0.93f, r * 0.06f, Gear.BG, 140)
-        line(canvas, deg, 0f, r * 0.93f, r * 0.05f, Gear.ON, (255 * (0.1f + 0.25f * glow)).toInt())
-        line(canvas, deg, 0f, r * 0.93f, r * 0.013f, Gear.ON, 248)
+        drawGlow(canvas, deg, 0f, r * 0.93f, minuteGlow)
+        line(canvas, deg, 0f, r * 0.93f, r * 0.014f, Gear.ON, 255)
     }
 
     private fun drawHour(canvas: Canvas, r: Float, deg: Float) {
-        line(canvas, deg, 0f, r * 0.55f, r * 0.12f, Gear.ORANGE, (255 * (0.15f + 0.2f * glow)).toInt())
-        line(canvas, deg, 0f, r * 0.55f, r * 0.04f, Gear.ORANGE, 242)
+        drawGlow(canvas, deg, 0f, r * 0.55f, hourGlow)
+        line(canvas, deg, 0f, r * 0.55f, r * 0.036f, Gear.ORANGE, 255)
+        // 芯の中心を白っぽく光らせ、熱を持った線のように見せる
+        line(canvas, deg, r * 0.07f, r * 0.53f, r * 0.012f, HOT_CORE, 235)
+
+        // 中心の軸。オレンジの光の中に小さな白い点
+        drawGlow(canvas, 0f, 0f, 0f, hubGlow)
         fill.shader = null
         fill.color = Gear.ORANGE
-        fill.alpha = 230
-        canvas.drawCircle(clockCx, clockCy, r * 0.05f, fill)
+        canvas.drawCircle(clockCx, clockCy, r * 0.045f, fill)
+        fill.color = HOT_CORE
+        canvas.drawCircle(clockCx, clockCy, r * 0.015f, fill)
+    }
+
+    /**
+     * 針の周りの光。中心からの距離に応じた明るさを、芯のすぐ周りの強い光と、広く淡いにじみの 2 つの山の和で決める。
+     * 針の向きに依らない形なので、シェーダーは最初に 1 度だけ作り、描くときはキャンバスを回して使う。
+     */
+    private class Glow(color: Int, near: Float, nearAlpha: Float, far: Float, farAlpha: Float) {
+        val reach = far * 3f
+        private val profile = FloatArray(GLOW_STEPS + 1) { i ->
+            val d = reach * i / GLOW_STEPS
+            (nearAlpha * exp(-0.5f * (d / near) * (d / near)) + farAlpha * exp(-0.5f * (d / far) * (d / far)))
+                .coerceIn(0f, 1f)
+        }
+        private val colors = IntArray(profile.size) { ColorUtils.setAlphaComponent(color, (255 * profile[it]).toInt()) }
+
+        /** 針の幅方向（左右対称）の明るさ。 */
+        val across: Shader = LinearGradient(-reach, 0f, reach, 0f,
+            colors.reversedArray() + colors.copyOfRange(1, colors.size),
+            FloatArray(GLOW_STEPS * 2 + 1) { it / (GLOW_STEPS * 2f) }, Shader.TileMode.CLAMP)
+
+        /** 針の両端の丸い部分の明るさ。 */
+        val round: Shader = RadialGradient(0f, 0f, reach, colors,
+            FloatArray(colors.size) { it / GLOW_STEPS.toFloat() }, Shader.TileMode.CLAMP)
+    }
+
+    // 時計を出さないとき（半径 0）でもグラデーションを作れるよう、半径は 1 以上にしておく
+    private val gr = clockR.coerceAtLeast(1f)
+    private val tickGlow = Glow(Gear.ON, gr * 0.014f, 0.5f, gr * 0.04f, 0.14f + 0.16f * glow)
+    private val minuteGlow = Glow(Gear.ON, gr * 0.016f, 0.55f, gr * 0.055f, 0.16f + 0.22f * glow)
+    private val hourGlow = Glow(Gear.ORANGE, gr * 0.028f, 0.75f, gr * 0.085f, 0.25f + 0.3f * glow)
+    private val hubGlow = Glow(Gear.ORANGE, gr * 0.05f, 0.6f, gr * 0.1f, 0.2f + 0.2f * glow)
+
+    /**
+     * [deg] の向きに、中心から [from]〜[to] の距離の線を包む光を描く。
+     * 線の部分は幅方向のグラデーション、両端は半円の放射グラデーションでつなぐ。
+     */
+    private fun drawGlow(canvas: Canvas, deg: Float, from: Float, to: Float, g: Glow) {
+        val e = g.reach
+        canvas.save()
+        canvas.translate(clockCx, clockCy)
+        canvas.rotate(deg)
+        if (to > from) {
+            glowPaint.shader = g.across
+            canvas.drawRect(-e, -to, e, -from, glowPaint)
+        }
+        // 先端側の半円（上向き）と根元側の半円（下向き）
+        glowPaint.shader = g.round
+        canvas.save()
+        canvas.translate(0f, -to)
+        glowOval.set(-e, -e, e, e)
+        canvas.drawArc(glowOval, 180f, 180f, true, glowPaint)
+        canvas.restore()
+        canvas.translate(0f, -from)
+        canvas.drawArc(glowOval, 0f, 180f, true, glowPaint)
+        canvas.restore()
     }
 
     /** 黄色い秒の光。後ろに薄れていく残像を引き、周りもぼんやり光る。 */
@@ -153,6 +224,12 @@ class LightDialView(
 
         /** 扇形の縁をぼかす角度（度）。 */
         const val FEATHER = 3f
+
+        /** 光の明るさを決める段数。 */
+        const val GLOW_STEPS = 16
+
+        /** 時針の芯と中心の点の、白に近い暖色。 */
+        const val HOT_CORE = 0xFFFFE2CC.toInt()
     }
 
     private fun x(deg: Float, dist: Float) = clockCx + (sin(Math.toRadians(deg.toDouble())) * dist).toFloat()
