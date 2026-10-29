@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
         findViewById<Button>(R.id.launcherStyle).setOnClickListener { pickLauncherStyle() }
+        bindSwitch(R.id.torchSwitch, prefs.showTorch) { prefs.showTorch = it }
 
         val speedLabel = findViewById<TextView>(R.id.speedLabel)
         findViewById<Slider>(R.id.speedSlider).apply {

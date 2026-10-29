@@ -33,6 +33,7 @@ object CoverContent {
     const val TAG_DIGITAL = "digital"
     const val TAG_LAUNCHER = "launcher"
     const val TAG_APP_GRID = "appGrid"
+    const val TAG_TORCH = "torch"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -102,6 +103,13 @@ object CoverContent {
             val dw = (prefs.digitalSize * w).toInt()
             addWithBackdrop(context, root, size, SecondsClockView(context), dw, (dw * 0.3f).toInt(),
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
+        }
+
+        // アプリを開いたときは暗い幕の下に隠れるよう、アプリより先に置く
+        if (prefs.showTorch) {
+            val tw = (prefs.torchSize * w).toInt()
+            val torch = TorchSwitch(context, interactive = !editing).apply { tag = TAG_TORCH }
+            root.addView(torch, place(size, prefs.torchX, prefs.torchY, tw, (tw * TORCH_ASPECT).toInt()))
         }
 
         addApps(context, root, size, prefs, onLaunch, editing, expandedPreview)
@@ -225,6 +233,9 @@ object CoverContent {
 
     /** 展開したときのグリッドの列数。 */
     private const val GRID_COLUMNS = 4
+
+    /** ライトのスイッチの高さ（幅に対する割合）。 */
+    private const val TORCH_ASPECT = 0.36f
 }
 
 /** 時計の後ろに敷く、輪郭をぼかした暗い楕円。背景が明るくても時刻を読みやすくする。 */

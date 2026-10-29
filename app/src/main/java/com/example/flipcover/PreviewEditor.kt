@@ -205,6 +205,11 @@ class PreviewEditor(
                 prefs.launcherY = cy
                 prefs.launcherSize = (prefs.launcherSize * pinch).coerceIn(0.06f, 0.3f)
             }
+            tag == CoverContent.TAG_TORCH -> {
+                prefs.torchX = cx
+                prefs.torchY = cy
+                prefs.torchSize = (prefs.torchSize * pinch).coerceIn(0.15f, 0.8f)
+            }
             tag == CoverContent.TAG_DIGITAL -> {
                 prefs.digitalX = cx
                 prefs.digitalY = cy
@@ -218,6 +223,7 @@ class PreviewEditor(
         /** ドラッグで動かせる部品。 */
         val MOVABLE = setOf(
             CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_LAUNCHER, CoverContent.TAG_APP_GRID,
+            CoverContent.TAG_TORCH,
         )
 
         /** 吸い付く位置（画面に対する割合）。12 等分なので、2・3・4・6 分割の線も含む。 */

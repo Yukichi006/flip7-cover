@@ -130,6 +130,22 @@ class Prefs(context: Context) {
         get() = sp.getFloat("gridH", 0.76f)
         set(v) = sp.edit().putFloat("gridH", v).apply()
 
+    /** スワイプでライトを点けるスイッチを表示する。 */
+    var showTorch: Boolean
+        get() = sp.getBoolean("showTorch", true)
+        set(v) = sp.edit().putBoolean("showTorch", v).apply()
+
+    // ライトのスイッチの中心と幅（画面に対する割合）。最初は右上の隅に置く
+    var torchX: Float
+        get() = sp.getFloat("torchX", 0.76f)
+        set(v) = sp.edit().putFloat("torchX", v).apply()
+    var torchY: Float
+        get() = sp.getFloat("torchY", 0.08f)
+        set(v) = sp.edit().putFloat("torchY", v).apply()
+    var torchSize: Float
+        get() = sp.getFloat("torchSize", 0.34f)
+        set(v) = sp.edit().putFloat("torchSize", v).apply()
+
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
     val appsX: Float
         get() = sp.getFloat("appsX", 0.5f)
@@ -156,6 +172,7 @@ class Prefs(context: Context) {
         .remove("appPositions")
         .remove("launcherX").remove("launcherY").remove("launcherSize")
         .remove("gridCx").remove("gridCy").remove("gridW").remove("gridH")
+        .remove("torchX").remove("torchY").remove("torchSize")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */

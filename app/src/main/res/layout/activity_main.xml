@@ -180,6 +180,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <!-- ライト -->
+        <TextView
+            style="@style/FlipCover.Section"
+            android:text="ライト" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/torchSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ライトのスイッチを表示（右へスワイプで点灯、左で消灯）" />
+
         <!-- プレビュー -->
         <TextView
             style="@style/FlipCover.Section"
