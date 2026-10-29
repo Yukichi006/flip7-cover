@@ -121,17 +121,14 @@ class LightDialView(
 
     private fun drawHour(canvas: Canvas, r: Float, deg: Float) {
         drawGlow(canvas, deg, 0f, r * 0.55f, hourGlow)
+        // 芯はほかの部品と同じオレンジ一色にして、色味を変えない
         line(canvas, deg, 0f, r * 0.55f, r * 0.036f, Gear.ORANGE, 255)
-        // 芯の中心を白っぽく光らせ、熱を持った線のように見せる
-        line(canvas, deg, r * 0.07f, r * 0.53f, r * 0.012f, HOT_CORE, 235)
 
-        // 中心の軸。オレンジの光の中に小さな白い点
+        // 中心の軸
         drawGlow(canvas, 0f, 0f, 0f, hubGlow)
         fill.shader = null
         fill.color = Gear.ORANGE
         canvas.drawCircle(clockCx, clockCy, r * 0.045f, fill)
-        fill.color = HOT_CORE
-        canvas.drawCircle(clockCx, clockCy, r * 0.015f, fill)
     }
 
     /**
@@ -227,9 +224,6 @@ class LightDialView(
 
         /** 光の明るさを決める段数。 */
         const val GLOW_STEPS = 16
-
-        /** 時針の芯と中心の点の、白に近い暖色。 */
-        const val HOT_CORE = 0xFFFFE2CC.toInt()
     }
 
     private fun x(deg: Float, dist: Float) = clockCx + (sin(Math.toRadians(deg.toDouble())) * dist).toFloat()

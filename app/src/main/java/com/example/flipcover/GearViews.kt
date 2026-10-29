@@ -21,7 +21,7 @@ object Gear {
     const val ON = 0xFFE6E2D9.toInt()
     const val OFF = 0xFF2E2E2B.toInt()
     const val PAD = 0xFF262623.toInt()
-    const val ORANGE = 0xFFFF6A1F.toInt()
+    const val ORANGE = 0xFFFF6A1A.toInt()
     const val YELLOW = 0xFFF5D90A.toInt()
     const val GREEN = 0xFF5CB85C.toInt()
     const val GRAY = 0xFF8A8780.toInt()
