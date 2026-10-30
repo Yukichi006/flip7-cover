@@ -12,6 +12,7 @@ import android.view.Display
 import android.view.View
 import android.widget.Button
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -92,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.allowBluetooth).setOnClickListener {
             askBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
+        findViewById<Button>(R.id.bluetoothDiagnose).setOnClickListener { showBluetoothDiagnosis() }
         findViewById<Button>(R.id.pickWidget).setOnClickListener { pickWidget() }
         findViewById<Button>(R.id.removeWidget).setOnClickListener { removeWidget() }
         bindSwitch(R.id.widgetButtonSwitch, prefs.useWidgetButton) { prefs.useWidgetButton = it }
@@ -133,6 +135,28 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(KEY_PENDING_WIDGET, pendingWidgetId)
+    }
+
+    /**
+     * Bluetooth 機器ごとに、残量をどう読もうとしてどうなったかを表示する（残量が出ないときの原因探し用）。
+     * 開いたときに、つながっている Bluetooth LE 機器へ問い合わせ直し、結果が届くたびに書き換える。
+     */
+    private fun showBluetoothDiagnosis() {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val text = TextView(this).apply {
+            setTextIsSelectable(true)
+            textSize = 12f
+            setPadding(pad, pad, pad, pad)
+            text = BatteryView.diagnose(this@MainActivity, force = true)
+        }
+        val update: () -> Unit = { text.text = BatteryView.diagnose(this, force = false) }
+        BleBattery.addListener(update)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Bluetooth 機器の診断")
+            .setView(ScrollView(this).apply { addView(text) })
+            .setPositiveButton("閉じる", null)
+            .setOnDismissListener { BleBattery.removeListener(update) }
+            .show()
     }
 
     private fun widgetLabel(id: Int) =

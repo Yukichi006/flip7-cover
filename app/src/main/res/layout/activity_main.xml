@@ -198,6 +198,13 @@
             android:layout_height="wrap_content"
             android:text="Bluetooth 機器の残量も表示する（許可が必要）" />
 
+        <Button
+            android:id="@+id/bluetoothDiagnose"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="残量が出ないときは：Bluetooth 機器の診断" />
+
         <!-- ウィジェット -->
         <TextView
             style="@style/FlipCover.Section"

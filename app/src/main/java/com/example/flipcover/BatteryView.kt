@@ -219,6 +219,45 @@ class BatteryView(context: Context) : View(context) {
             runCatching { BluetoothDevice::class.java.getMethod("getBatteryLevel").invoke(device) as Int }
                 .getOrDefault(-1)
 
+        /**
+         * 設定画面の診断用に、Bluetooth 機器ごとに残量をどう読もうとしてどうなったかを文章にする。
+         * [force] なら、つながっていそうな Bluetooth LE 機器に今すぐ問い合わせ直す（結果は少しあとで届く）。
+         */
+        @SuppressLint("MissingPermission")
+        fun diagnose(context: Context, force: Boolean): String {
+            if (!canReadBluetooth(context)) return "「付近のデバイス」の許可がありません。"
+            val manager = context.getSystemService(BluetoothManager::class.java) ?: return "Bluetooth が使えません。"
+            val bonded = runCatching { manager.adapter?.bondedDevices }.getOrNull().orEmpty()
+            val leDevices = runCatching { manager.getConnectedDevices(BluetoothProfile.GATT) }.getOrNull().orEmpty()
+            val leConnected = leDevices.map { it.address }.toSet()
+            val all = (bonded + leDevices).distinctBy { it.address }
+            if (all.isEmpty()) return "ペアリング済み・接続中の機器がありません。"
+            return all.joinToString("\n\n") { d ->
+                val name = runCatching { d.alias ?: d.name }.getOrNull() ?: "（名前なし）"
+                val type = when (d.type) {
+                    BluetoothDevice.DEVICE_TYPE_CLASSIC -> "クラシック"
+                    BluetoothDevice.DEVICE_TYPE_LE -> "LE"
+                    BluetoothDevice.DEVICE_TYPE_DUAL -> "クラシック＋LE"
+                    else -> "不明"
+                }
+                val major = runCatching { d.bluetoothClass?.majorDeviceClass }.getOrNull()
+                val reported = readBtLevel(d)
+                val connected = isConnected(d)
+                val gatt = d.address in leConnected
+                if (force && reported !in 0..100 && (gatt || connected) && d.type != BluetoothDevice.DEVICE_TYPE_CLASSIC) {
+                    BleBattery.request(context, d, force = true)
+                }
+                buildString {
+                    append("■ $name（${d.address.takeLast(5)}）\n")
+                    append("種類: $type／分類: ${major?.let { "0x%04x".format(it) } ?: "不明"}／アイコン: ${DeviceKind.of(d, name)}\n")
+                    append("ペアリング: ${if (d in bonded) "済み" else "なし"}／接続: ${if (connected) "あり" else "なし"}")
+                    append("／LE 接続: ${if (gatt) "あり" else "なし"}\n")
+                    append("Android への報告: ${if (reported in 0..100) "$reported%" else "なし"}\n")
+                    append("直接の問い合わせ: ${BleBattery.status(d) ?: "まだ"}")
+                }
+            }
+        }
+
         /** 機器がつながっているか（公開 API ではないので、読めなければ false）。 */
         private fun isConnected(device: BluetoothDevice): Boolean =
             runCatching { BluetoothDevice::class.java.getMethod("isConnected").invoke(device) as Boolean }
