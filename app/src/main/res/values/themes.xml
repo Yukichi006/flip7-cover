@@ -5,7 +5,7 @@
     <style name="FlipCover.Section" parent="">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">24dp</item>
+        <item name="android:layout_marginTop">12dp</item>
         <item name="android:layout_marginBottom">4dp</item>
         <item name="android:textSize">18sp</item>
         <item name="android:textStyle">bold</item>
@@ -16,5 +16,20 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginTop">16dp</item>
         <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- 設定画面の左のカテゴリ。選んでいるものは MainActivity で背景を付ける -->
+    <style name="FlipCover.NavItem" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:paddingHorizontal">2dp</item>
+        <!-- 「ウィジェット」のような長い名前も 1 行に収まるよう、幅に合わせて文字を小さくする -->
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">10sp</item>
+        <item name="android:autoSizeMaxTextSize">13sp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
     </style>
 </resources>

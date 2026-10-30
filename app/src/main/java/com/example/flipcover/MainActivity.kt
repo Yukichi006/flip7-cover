@@ -5,9 +5,12 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.Display
 import android.view.View
 import android.widget.Button
@@ -17,6 +20,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
@@ -35,6 +39,20 @@ class MainActivity : AppCompatActivity() {
         refresh()
     }
 
+    /** 左の列で選んでいるカテゴリ（左の列の項目の id）。 */
+    private var category = R.id.navGeneral
+
+    /** 左の列の項目と、選んだときに右に出す設定のまとまり。 */
+    private val sections = mapOf(
+        R.id.navGeneral to R.id.sectionGeneral,
+        R.id.navBackground to R.id.sectionBackground,
+        R.id.navClock to R.id.sectionClock,
+        R.id.navApps to R.id.sectionApps,
+        R.id.navWidgets to R.id.sectionWidgets,
+        R.id.navBattery to R.id.sectionBattery,
+        R.id.navTorch to R.id.sectionTorch,
+    )
+
     /** 選んでいる途中のウィジェットの番号（使用の許可や初期設定の画面から戻るまで）。 */
     private var pendingWidgetId = -1
 
@@ -43,6 +61,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
         pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET, -1) ?: -1
+        category = savedInstanceState?.getInt(KEY_CATEGORY, category)?.takeIf { it in sections } ?: category
+        sections.keys.forEach { nav -> findViewById<View>(nav).setOnClickListener { selectCategory(nav) } }
+        selectCategory(category)
         editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
         findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
         modeGroup = findViewById(R.id.modeGroup)
@@ -135,6 +156,32 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(KEY_PENDING_WIDGET, pendingWidgetId)
+        outState.putInt(KEY_CATEGORY, category)
+    }
+
+    /** 左の列で [nav] を選び、右にそのカテゴリの設定だけを出す。 */
+    private fun selectCategory(nav: Int) {
+        category = nav
+        val ripple = TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }
+        for ((item, section) in sections) {
+            val selected = item == nav
+            findViewById<View>(section).visibility = if (selected) View.VISIBLE else View.GONE
+            findViewById<TextView>(item).apply {
+                if (selected) {
+                    background = GradientDrawable().apply {
+                        cornerRadius = 24 * resources.displayMetrics.density
+                        setColor(MaterialColors.getColor(this@apply, com.google.android.material.R.attr.colorSecondaryContainer))
+                    }
+                    setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSecondaryContainer))
+                    setTypeface(null, Typeface.BOLD)
+                } else {
+                    setBackgroundResource(ripple.resourceId)
+                    setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant))
+                    setTypeface(null, Typeface.NORMAL)
+                }
+            }
+        }
+        findViewById<View>(R.id.settingsScroll).scrollTo(0, 0)
     }
 
     /**
@@ -433,5 +480,6 @@ class MainActivity : AppCompatActivity() {
         private const val REQ_BIND_WIDGET = 1
         private const val REQ_CONFIGURE_WIDGET = 2
         private const val KEY_PENDING_WIDGET = "pendingWidget"
+        private const val KEY_CATEGORY = "category"
     }
 }
