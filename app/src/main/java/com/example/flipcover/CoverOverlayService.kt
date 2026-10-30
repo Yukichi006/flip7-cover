@@ -82,7 +82,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private fun show(display: Display) {
         val ctx = createWindowContext(display, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null)
         val wm = ctx.getSystemService(WindowManager::class.java)
-        val view = CoverContent.create(ctx, prefs, CoverContent.coverSize(display), ::launch)
+        val view = CoverContent.create(ctx, prefs, CoverContent.coverSize(display), ::launch, ::onWidgetTapped)
 
         val detector = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -137,6 +137,21 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
             .onFailure { Toast.makeText(this, "起動できませんでした: ${it.message}", Toast.LENGTH_LONG).show() }
     }
 
+    /**
+     * ウィジェットがタップされたとき。モバイルSuica のように、残高を読むために自分のアプリの画面を開く
+     * ウィジェットがあるが、この表示はいつも一番上にあるので、そのままでは画面が下に隠れてしまう。
+     * そこで、少しの間そのアプリの画面が出るのを待ち、出たら表示を消して見えるようにする。
+     * 画面を開かず中身を更新するだけのウィジェットなら、表示はそのまま残す。
+     */
+    private fun onWidgetTapped(packageName: String) {
+        if (launchingPackage != null) return
+        launchingPackage = packageName
+        handler.removeCallbacks(forgetWidgetApp)
+        handler.postDelayed(forgetWidgetApp, WIDGET_APP_WAIT_MS)
+    }
+
+    private val forgetWidgetApp = Runnable { launchingPackage = null }
+
     private fun hide() {
         if (overlay != null) runCatching { WidgetHost.get(this).stopListening() }
         overlay?.let { v -> runCatching { overlayWm?.removeView(v) } }
@@ -153,6 +168,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = launchingPackage ?: return
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.packageName?.toString() == pkg) {
+            // アプリの画面の上に表示が戻ってこないよう、閉じ直すまでは出さない
+            dismissedUntilReopen = true
+            handler.removeCallbacks(forgetWidgetApp)
             // 最初の画面が描かれるのを少しだけ待ってから消す
             handler.removeCallbacks(fadeOut)
             handler.postDelayed(fadeOut, 120)
@@ -163,6 +181,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     companion object {
         /** アプリの画面が出たことが分からなくても、この時間でオーバーレイを消す。 */
         private const val LAUNCH_TIMEOUT_MS = 1500L
+
+        /** ウィジェットをタップしてから、そのアプリの画面が出るのを待つ時間。 */
+        private const val WIDGET_APP_WAIT_MS = 4000L
 
         /**
          * Galaxy Z Flip のカバー画面は通常 displayId=1 の内蔵ディスプレイとして見える。

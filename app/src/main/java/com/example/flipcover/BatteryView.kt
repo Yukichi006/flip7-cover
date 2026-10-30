@@ -124,12 +124,14 @@ class BatteryView(context: Context) : View(context) {
         if (!canReadBluetooth(context)) return emptyList()
         val manager = context.getSystemService(BluetoothManager::class.java) ?: return emptyList()
         val bonded = runCatching { manager.adapter?.bondedDevices }.getOrNull().orEmpty()
-        // Galaxy Fit などの Bluetooth LE 機器は、つながっていても Android に残量を報告しないので、直接問い合わせる
-        val leConnected = runCatching { manager.getConnectedDevices(BluetoothProfile.GATT) }.getOrNull().orEmpty()
-            .map { it.address }.toSet()
-        return bonded.mapNotNull { d ->
+        // Galaxy Fit などの Bluetooth LE 機器は、つながっていても Android に残量を報告しないので、直接問い合わせる。
+        // スマートリングのように、ペアリングせず専用アプリだけがつないでいる機器もここに含まれる
+        val leDevices = runCatching { manager.getConnectedDevices(BluetoothProfile.GATT) }.getOrNull().orEmpty()
+        val leConnected = leDevices.map { it.address }.toSet()
+        return (bonded + leDevices).distinctBy { it.address }.mapNotNull { d ->
             val reported = readBtLevel(d).takeIf { it in 0..100 } ?: btLevels[d.address]?.takeIf { it in 0..100 }
-            val le = d.type == BluetoothDevice.DEVICE_TYPE_LE || d.type == BluetoothDevice.DEVICE_TYPE_DUAL
+            val le = d.address in leConnected ||
+                d.type == BluetoothDevice.DEVICE_TYPE_LE || d.type == BluetoothDevice.DEVICE_TYPE_DUAL
             val level = reported ?: if (le && (d.address in leConnected || isConnected(d))) {
                 BleBattery.request(context, d)
                 BleBattery.level(d)

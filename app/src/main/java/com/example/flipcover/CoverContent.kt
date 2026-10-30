@@ -51,6 +51,7 @@ object CoverContent {
 
     /**
      * [onLaunch] はアプリアイコンがタップされたときに呼ばれる（プレビューでは null）。
+     * [onWidgetTap] はウィジェットがタップされたときに、そのウィジェットのアプリの名前（パッケージ名）で呼ばれる。
      * [editing] はプレビューで編集しているときに true にする。
      * [expandedPreview] はプレビューで、ボタンを開いたときの様子を見せるときに true にする。
      */
@@ -59,6 +60,7 @@ object CoverContent {
         prefs: Prefs,
         size: Size,
         onLaunch: ((ComponentName) -> Unit)? = null,
+        onWidgetTap: ((String) -> Unit)? = null,
         editing: Boolean = false,
         expandedPreview: Boolean = false,
     ): FrameLayout {
@@ -121,7 +123,7 @@ object CoverContent {
 
         // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く
         val showOpen = editing && expandedPreview
-        val widgets = buildWidgets(context, size, prefs, editing, showOpen && prefs.useWidgetButton)
+        val widgets = buildWidgets(context, size, prefs, editing, showOpen && prefs.useWidgetButton, onWidgetTap)
         var widgetButton: LauncherButton? = null
         if (widgets != null && !prefs.useWidgetButton) {
             root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
@@ -161,7 +163,10 @@ object CoverContent {
      * ウィジェットの文字の大きさがカバー画面と同じになるよう、カバー画面の密度で組み立てる。
      * [outline] のときは、プレビューで範囲が分かるよう点線で囲む。
      */
-    private fun buildWidgets(context: Context, size: Size, prefs: Prefs, editing: Boolean, outline: Boolean): Widgets? {
+    private fun buildWidgets(
+        context: Context, size: Size, prefs: Prefs, editing: Boolean, outline: Boolean,
+        onTap: ((String) -> Unit)?,
+    ): Widgets? {
         val am = AppWidgetManager.getInstance(context)
         // ウィジェットのアプリがアンインストールされたものは飛ばす
         val widgets = prefs.widgetIds.mapNotNull { id -> am.getAppWidgetInfo(id)?.let { id to it } }
@@ -193,7 +198,7 @@ object CoverContent {
                 // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
                 runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(cellW / density, cellH / density))) }
             }
-            WidgetFrame(context, editing).also { frame ->
+            WidgetFrame(context, editing) { onTap?.invoke(info.provider.packageName) }.also { frame ->
                 frame.addView(view, FrameLayout.LayoutParams(-1, -1))
                 area.addView(frame, FrameLayout.LayoutParams(cellW, cellH).apply {
                     gravity = Gravity.TOP or Gravity.START
