@@ -20,6 +20,7 @@ enum class LauncherStyle(val label: String) {
     PAD("パッド（機材風）"),
     GLOW("光"),
     PLUS("プラス"),
+    CARDS("カード（2 段）"),
 }
 
 /**
@@ -104,6 +105,18 @@ class LauncherButton(context: Context, private val style: LauncherStyle) : View(
                 fill.shader = null
                 circle(canvas, cx, cy, r * 0.2f, accent)
             }
+            LauncherStyle.CARDS -> {
+                // ウィジェットのカードが 2 枚重なった形。開くと上下に離れ、下のカードがオレンジになる
+                circle(canvas, cx, cy, r, PAD_COLOR)
+                val half = r * 0.46f
+                val gap = r * (0.07f + 0.08f * o)
+                fill.color = Gear.ON
+                rect.set(cx - half, cy - r * 0.42f - gap * 0.5f, cx + half, cy - gap)
+                canvas.drawRoundRect(rect, r * 0.1f, r * 0.1f, fill)
+                fill.color = accent
+                rect.set(cx - half, cy + gap, cx + half, cy + r * 0.42f + gap * 0.5f)
+                canvas.drawRoundRect(rect, r * 0.1f, r * 0.1f, fill)
+            }
             LauncherStyle.PLUS -> {
                 circle(canvas, cx, cy, r, PAD_COLOR)
                 stroke.color = Gear.ON
@@ -157,6 +170,8 @@ class AppLauncher(
 
     fun setOpen(value: Boolean) {
         open = value
+        // 開いている間は、暗い幕より手前でボタンを押せるようにする
+        button.translationZ = if (value) 1f else 0f
         button.animateOpen(value)
         button.removeCallbacks(autoClose)
         // アイコンはグリッドの中にあるので、ボタンの中心をグリッドの座標に直して使う

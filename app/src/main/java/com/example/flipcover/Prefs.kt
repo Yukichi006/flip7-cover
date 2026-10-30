@@ -146,23 +146,46 @@ class Prefs(context: Context) {
         get() = sp.getFloat("torchSize", 0.34f)
         set(v) = sp.edit().putFloat("torchSize", v).apply()
 
-    /** カバー画面に表示するほかのアプリのウィジェットの番号。置いていなければ -1。 */
-    var widgetId: Int
-        get() = sp.getInt("widgetId", -1)
-        set(v) = sp.edit().putInt("widgetId", v).apply()
+    /** カバー画面に置くほかのアプリのウィジェットの番号（表示順）。 */
+    var widgetIds: List<Int>
+        get() = sp.getString("widgetIds", null)?.split('|')?.mapNotNull { it.toIntOrNull() }
+            // 1 つだけ置けたころの設定を引き継ぐ
+            ?: listOf(sp.getInt("widgetId", -1)).filter { it != -1 }
+        set(v) = sp.edit().putString("widgetIds", v.joinToString("|")).remove("widgetId").apply()
 
-    // ウィジェットの中心と幅・高さ（画面に対する割合）。最初は時計の下、アプリのボタンより上に置く
+    /** ウィジェットをボタンにまとめ、タップで展開する。オフならウィジェットを常に表示する。 */
+    var useWidgetButton: Boolean
+        get() = sp.getBoolean("useWidgetButton", true)
+        set(v) = sp.edit().putBoolean("useWidgetButton", v).apply()
+
+    var widgetButtonStyle: LauncherStyle
+        get() = runCatching { LauncherStyle.valueOf(sp.getString("widgetButtonStyle", null)!!) }
+            .getOrDefault(LauncherStyle.CARDS)
+        set(v) = sp.edit().putString("widgetButtonStyle", v.name).apply()
+
+    // 最初はアプリのボタンの上に置く
+    var widgetButtonX: Float
+        get() = sp.getFloat("widgetButtonX", 0.13f)
+        set(v) = sp.edit().putFloat("widgetButtonX", v).apply()
+    var widgetButtonY: Float
+        get() = sp.getFloat("widgetButtonY", 0.75f)
+        set(v) = sp.edit().putFloat("widgetButtonY", v).apply()
+    var widgetButtonSize: Float
+        get() = sp.getFloat("widgetButtonSize", 0.13f)
+        set(v) = sp.edit().putFloat("widgetButtonSize", v).apply()
+
+    // ウィジェットを縦に並べる範囲（中心と幅・高さ、画面に対する割合）。最初は時計のあたりに大きく広げる
     var widgetX: Float
         get() = sp.getFloat("widgetX", 0.5f)
         set(v) = sp.edit().putFloat("widgetX", v).apply()
     var widgetY: Float
-        get() = sp.getFloat("widgetY", 0.66f)
+        get() = sp.getFloat("widgetY", 0.42f)
         set(v) = sp.edit().putFloat("widgetY", v).apply()
     var widgetW: Float
-        get() = sp.getFloat("widgetW", 0.8f)
+        get() = sp.getFloat("widgetW", 0.92f)
         set(v) = sp.edit().putFloat("widgetW", v).apply()
     var widgetH: Float
-        get() = sp.getFloat("widgetH", 0.24f)
+        get() = sp.getFloat("widgetH", 0.5f)
         set(v) = sp.edit().putFloat("widgetH", v).apply()
 
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
@@ -193,6 +216,7 @@ class Prefs(context: Context) {
         .remove("gridCx").remove("gridCy").remove("gridW").remove("gridH")
         .remove("torchX").remove("torchY").remove("torchSize")
         .remove("widgetX").remove("widgetY").remove("widgetW").remove("widgetH")
+        .remove("widgetButtonX").remove("widgetButtonY").remove("widgetButtonSize")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */

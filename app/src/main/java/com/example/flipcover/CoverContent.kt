@@ -39,6 +39,7 @@ object CoverContent {
     const val TAG_APP_GRID = "appGrid"
     const val TAG_TORCH = "torch"
     const val TAG_WIDGET = "widget"
+    const val TAG_WIDGET_BUTTON = "widgetButton"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -111,7 +112,16 @@ object CoverContent {
         }
 
         // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く
-        addWidget(context, root, size, prefs, editing)
+        val showOpen = editing && expandedPreview
+        val widgets = buildWidgets(context, size, prefs, editing, showOpen && prefs.useWidgetButton)
+        var widgetButton: LauncherButton? = null
+        if (widgets != null && !prefs.useWidgetButton) {
+            root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
+        } else if (widgets != null) {
+            val bs = (prefs.widgetButtonSize * w).toInt()
+            widgetButton = LauncherButton(context, prefs.widgetButtonStyle).apply { tag = TAG_WIDGET_BUTTON }
+            root.addView(widgetButton, place(size, prefs.widgetButtonX, prefs.widgetButtonY, bs, bs))
+        }
         if (prefs.showTorch) {
             val tw = (prefs.torchSize * w).toInt()
             val torch = TorchSwitch(context, interactive = !editing).apply { tag = TAG_TORCH }
@@ -119,35 +129,67 @@ object CoverContent {
         }
 
         addApps(context, root, size, prefs, onLaunch, editing, expandedPreview)
+
+        // ボタンで開くウィジェットは、開いたときにアプリより手前に出るよう最後に置く
+        if (widgets != null && widgetButton != null && (!editing || showOpen)) {
+            // プレビューでアプリも開いて見せているときは、アプリのグリッドまで暗くしないよう幕を省く
+            val appsOpen = prefs.useLauncher && prefs.apps.isNotEmpty()
+            val scrim = if (!editing || !appsOpen) View(context).apply {
+                setBackgroundColor(SCRIM_COLOR)
+                root.addView(this, FrameLayout.LayoutParams(-1, -1))
+            } else null
+            root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
+            if (showOpen) widgetButton.showOpen()
+            else if (scrim != null) AppLauncher(widgetButton, scrim, widgets.area, widgets.frames)
+        }
         return root
     }
 
+    /** 縦に並べたウィジェットと、それを入れる範囲（[width]×[height] px）。 */
+    private class Widgets(val area: FrameLayout, val frames: List<View>, val width: Int, val height: Int)
+
     /**
-     * ほかのアプリのウィジェット（Suica の残高など）を置く。
+     * ほかのアプリのウィジェット（Suica の残高など）を、範囲の中に縦に等分して並べる。置いていなければ null。
      * ウィジェットの文字の大きさがカバー画面と同じになるよう、カバー画面の密度で組み立てる。
+     * [outline] のときは、プレビューで範囲が分かるよう点線で囲む。
      */
-    private fun addWidget(context: Context, root: FrameLayout, size: Size, prefs: Prefs, editing: Boolean) {
-        val id = prefs.widgetId
-        if (id == -1) return
-        // ウィジェットのアプリがアンインストールされたときは何も置かない
-        val info = AppWidgetManager.getInstance(context).getAppWidgetInfo(id) ?: return
+    private fun buildWidgets(context: Context, size: Size, prefs: Prefs, editing: Boolean, outline: Boolean): Widgets? {
+        val am = AppWidgetManager.getInstance(context)
+        // ウィジェットのアプリがアンインストールされたものは飛ばす
+        val widgets = prefs.widgetIds.mapNotNull { id -> am.getAppWidgetInfo(id)?.let { id to it } }
+        if (widgets.isEmpty()) return null
         val cover = CoverOverlayService.findCoverDisplay(context.getSystemService(DisplayManager::class.java))
         val onCover = runCatching { context.display?.displayId == cover?.displayId }.getOrDefault(false)
         val widgetContext = if (cover != null && !onCover) context.createDisplayContext(cover) else context
-        val view = runCatching { WidgetHost.get(context).createView(widgetContext, id, info) }.getOrNull() ?: return
+        val density = widgetContext.resources.displayMetrics.density
 
-        val ww = (prefs.widgetW * size.width).toInt()
-        val wh = (prefs.widgetH * size.height).toInt()
-        if (!editing) {
-            // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
-            val density = widgetContext.resources.displayMetrics.density
-            runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(ww / density, wh / density))) }
-        }
-        val frame = WidgetFrame(context, editing).apply {
+        val aw = (prefs.widgetW * size.width).toInt()
+        val ah = (prefs.widgetH * size.height).toInt()
+        val gap = (size.width * 0.02f).toInt()
+        val cellH = (ah - gap * (widgets.size - 1)) / widgets.size
+        val area = FrameLayout(context).apply {
             tag = TAG_WIDGET
-            addView(view, FrameLayout.LayoutParams(-1, -1))
+            if (outline) background = GradientDrawable().apply {
+                setStroke(4, 0x66FFFFFF, 14f, 10f)
+                cornerRadius = 16f
+            }
         }
-        root.addView(frame, place(size, prefs.widgetX, prefs.widgetY, ww, wh))
+        val frames = widgets.mapIndexedNotNull { i, (id, info) ->
+            val view = runCatching { WidgetHost.get(context).createView(widgetContext, id, info) }.getOrNull()
+                ?: return@mapIndexedNotNull null
+            if (!editing) {
+                // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
+                runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(aw / density, cellH / density))) }
+            }
+            WidgetFrame(context, editing).also { frame ->
+                frame.addView(view, FrameLayout.LayoutParams(-1, -1))
+                area.addView(frame, FrameLayout.LayoutParams(aw, cellH).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    topMargin = i * (cellH + gap)
+                })
+            }
+        }
+        return Widgets(area, frames, aw, ah)
     }
 
     /** 背景と一体のドット時計。時計の位置はほかの部品と同じく画面内に収めた値を使う。 */
@@ -227,7 +269,7 @@ object CoverContent {
         val showOpen = editing && expandedPreview
         // 開いたときにアイコンの後ろを暗くする幕
         val scrim = if (!editing || showOpen) View(context).apply {
-            setBackgroundColor(0xB01C1C1A.toInt())
+            setBackgroundColor(SCRIM_COLOR)
             root.addView(this, FrameLayout.LayoutParams(-1, -1))
         } else null
 
@@ -267,6 +309,9 @@ object CoverContent {
 
     /** 展開したときのグリッドの列数。 */
     private const val GRID_COLUMNS = 4
+
+    /** ボタンで開いたときに後ろを暗くする幕の色。 */
+    private const val SCRIM_COLOR = 0xB01C1C1A.toInt()
 
     /** ライトのスイッチの高さ（幅に対する割合）。 */
     private const val TORCH_ASPECT = 0.36f

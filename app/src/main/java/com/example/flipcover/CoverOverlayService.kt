@@ -112,7 +112,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
             overlayWm = wm
             coverDisplayId = display.displayId
             // 表示している間だけ、ウィジェットの更新（残高の変化など）を受け取る
-            if (prefs.widgetId != -1) runCatching { WidgetHost.get(this).startListening() }
+            if (prefs.widgetIds.isNotEmpty()) runCatching { WidgetHost.get(this).startListening() }
         }
     }
 

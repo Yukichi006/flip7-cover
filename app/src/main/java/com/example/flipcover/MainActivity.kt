@@ -76,13 +76,15 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
-        findViewById<Button>(R.id.launcherStyle).setOnClickListener { pickLauncherStyle() }
+        findViewById<Button>(R.id.launcherStyle).setOnClickListener {
+            pickButtonStyle("ボタンのデザイン", prefs.launcherStyle) { prefs.launcherStyle = it }
+        }
         bindSwitch(R.id.torchSwitch, prefs.showTorch) { prefs.showTorch = it }
         findViewById<Button>(R.id.pickWidget).setOnClickListener { pickWidget() }
-        findViewById<Button>(R.id.removeWidget).setOnClickListener {
-            if (prefs.widgetId != -1) WidgetHost.get(this).deleteAppWidgetId(prefs.widgetId)
-            prefs.widgetId = -1
-            refresh()
+        findViewById<Button>(R.id.removeWidget).setOnClickListener { removeWidget() }
+        bindSwitch(R.id.widgetButtonSwitch, prefs.useWidgetButton) { prefs.useWidgetButton = it }
+        findViewById<Button>(R.id.widgetButtonStyle).setOnClickListener {
+            pickButtonStyle("ウィジェットのボタンのデザイン", prefs.widgetButtonStyle) { prefs.widgetButtonStyle = it }
         }
 
         val speedLabel = findViewById<TextView>(R.id.speedLabel)
@@ -121,11 +123,32 @@ class MainActivity : AppCompatActivity() {
         outState.putInt(KEY_PENDING_WIDGET, pendingWidgetId)
     }
 
+    private fun widgetLabel(id: Int) =
+        AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.loadLabel(packageManager) ?: "（見つかりません）"
+
+    /** 置いているウィジェットから 1 つ選んで外す。 */
+    private fun removeWidget() {
+        val ids = prefs.widgetIds
+        MaterialAlertDialogBuilder(this)
+            .setTitle("外すウィジェット")
+            .setItems(ids.map { widgetLabel(it) }.toTypedArray()) { _, i ->
+                WidgetHost.get(this).deleteAppWidgetId(ids[i])
+                prefs.widgetIds = ids - ids[i]
+                refresh()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
     /**
      * カバー画面に置くウィジェットを選ぶ。
      * 選んだら、使用の許可（初回だけ確認画面が出る）→ 必要ならウィジェットの初期設定、の順に進める。
      */
     private fun pickWidget() {
+        if (prefs.widgetIds.size >= MAX_WIDGETS) {
+            toast("ウィジェットは${MAX_WIDGETS}個までです。先にどれかを外してください")
+            return
+        }
         val am = AppWidgetManager.getInstance(this)
         val pm = packageManager
         val providers = am.installedProviders
@@ -176,11 +199,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 選んだウィジェットを置き、前に置いていたものは片付ける。 */
+    /** 選んだウィジェットを、並びの最後に足す。 */
     private fun finishWidget() {
-        val old = prefs.widgetId
-        if (old != -1 && old != pendingWidgetId) WidgetHost.get(this).deleteAppWidgetId(old)
-        prefs.widgetId = pendingWidgetId
+        prefs.widgetIds = prefs.widgetIds + pendingWidgetId
         pendingWidgetId = -1
         refresh()
     }
@@ -255,12 +276,12 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun pickLauncherStyle() {
+    private fun pickButtonStyle(title: String, current: LauncherStyle, save: (LauncherStyle) -> Unit) {
         val styles = LauncherStyle.entries
         MaterialAlertDialogBuilder(this)
-            .setTitle("ボタンのデザイン")
-            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.launcherStyle)) { dialog, i ->
-                prefs.launcherStyle = styles[i]
+            .setTitle(title)
+            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(current)) { dialog, i ->
+                save(styles[i])
                 refresh()
                 dialog.dismiss()
             }
@@ -320,9 +341,13 @@ class MainActivity : AppCompatActivity() {
             text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
             visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
         }
-        findViewById<TextView>(R.id.widgetLabel).text =
-            AppWidgetManager.getInstance(this).getAppWidgetInfo(prefs.widgetId)?.loadLabel(packageManager) ?: "なし"
-        findViewById<View>(R.id.removeWidget).visibility = if (prefs.widgetId != -1) View.VISIBLE else View.GONE
+        val widgetIds = prefs.widgetIds
+        findViewById<TextView>(R.id.widgetLabel).text = widgetIds.joinToString("、") { widgetLabel(it) }.ifEmpty { "なし" }
+        findViewById<View>(R.id.removeWidget).visibility = if (widgetIds.isNotEmpty()) View.VISIBLE else View.GONE
+        findViewById<Button>(R.id.widgetButtonStyle).apply {
+            text = "ボタンのデザイン: ${prefs.widgetButtonStyle.label}"
+            visibility = if (prefs.useWidgetButton) View.VISIBLE else View.GONE
+        }
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
         }.joinToString("、").ifEmpty { "なし" }
@@ -330,10 +355,10 @@ class MainActivity : AppCompatActivity() {
         val cover = CoverOverlayService.findCoverDisplay(getSystemService(DisplayManager::class.java))
         val size = CoverContent.coverSize(cover)
         val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
-        findViewById<View>(R.id.expandedPreviewSwitch).visibility =
-            if (prefs.useLauncher && prefs.apps.isNotEmpty()) View.VISIBLE else View.GONE
-        val showExpanded = expandedPreview && prefs.useLauncher
-        editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = showExpanded), size, cutouts)
+        // アプリかウィジェットのどちらかをボタンにまとめているときだけ、開いた配置を見せる切り替えを出す
+        val hasButton = (prefs.useLauncher && prefs.apps.isNotEmpty()) || (prefs.useWidgetButton && widgetIds.isNotEmpty())
+        findViewById<View>(R.id.expandedPreviewSwitch).visibility = if (hasButton) View.VISIBLE else View.GONE
+        editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = expandedPreview), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text =
             if (isServiceEnabled()) "✅ サービス有効" else "⚠️ ユーザー補助で「FlipCover」をオンにしてください"
@@ -365,6 +390,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val MAX_APPS = 16
+        private const val MAX_WIDGETS = 4
         private const val REQ_BIND_WIDGET = 1
         private const val REQ_CONFIGURE_WIDGET = 2
         private const val KEY_PENDING_WIDGET = "pendingWidget"

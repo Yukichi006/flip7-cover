@@ -196,7 +196,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="ウィジェットを選ぶ" />
+            android:text="ウィジェットを追加（最大4個）" />
 
         <Button
             android:id="@+id/removeWidget"
@@ -204,6 +204,18 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="ウィジェットを外す" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/widgetButtonSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ボタンにまとめる（タップで展開）" />
+
+        <Button
+            android:id="@+id/widgetButtonStyle"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
 
         <!-- ライト -->
         <TextView
@@ -231,7 +243,7 @@
             android:id="@+id/expandedPreviewSwitch"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="ボタンを開いたときの配置を表示" />
+            android:text="ボタンを開いたときの配置を表示（アプリ・ウィジェット）" />
 
         <!-- Flip7 のカバー画面 (948x1048) と同じ比率 -->
         <FrameLayout
