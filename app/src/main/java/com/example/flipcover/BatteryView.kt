@@ -32,7 +32,7 @@ import androidx.core.content.IntentCompat
  */
 @SuppressLint("ViewConstructor")
 class BatteryView(context: Context) : View(context) {
-    private class Row(val name: String, val level: Int, val charging: Boolean)
+    private class Row(val name: String, val level: Int, val charging: Boolean, val kind: DeviceKind)
 
     private var rows = emptyList<Row>()
     private var phoneLevel = -1
@@ -53,6 +53,7 @@ class BatteryView(context: Context) : View(context) {
         fontFeatureSettings = "tnum"
     }
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Gear.GRAY }
     private val rect = RectF()
 
     private val receiver = object : BroadcastReceiver() {
@@ -112,7 +113,7 @@ class BatteryView(context: Context) : View(context) {
 
     private fun refresh() {
         val list = mutableListOf<Row>()
-        if (phoneLevel >= 0) list += Row("本体", phoneLevel, phoneCharging)
+        if (phoneLevel >= 0) list += Row("本体", phoneLevel, phoneCharging, DeviceKind.PHONE)
         list += bluetoothRows()
         rows = list.take(MAX_ROWS)
         invalidate()
@@ -137,7 +138,8 @@ class BatteryView(context: Context) : View(context) {
                 BleBattery.level(d)
             } else null
             level ?: return@mapNotNull null
-            Row(runCatching { d.alias ?: d.name }.getOrNull() ?: d.address, level, false)
+            val name = runCatching { d.alias ?: d.name }.getOrNull() ?: d.address
+            Row(name, level, false, DeviceKind.of(d, name))
         }.sortedBy { it.name }
     }
 
@@ -151,11 +153,15 @@ class BatteryView(context: Context) : View(context) {
         val pctW = percent.measureText("100%")
         val gap = rowH * 0.14f
         val segH = rowH * 0.17f
+        // 行の左に機器の種類のアイコンを置き、棒はその右から始める
+        val iconS = rowH * 0.5f
+        val barLeft = iconS + gap
+        icon.setShadowLayer(rowH * 0.12f, 0f, 0f, SHADOW)
 
         rows.forEachIndexed { i, row ->
             val top = i * rowH
             val name = if (row.charging) "${row.name}・充電中" else row.name
-            canvas.drawText(TextUtils.ellipsize(name, label, w, TextUtils.TruncateAt.END).toString(),
+            canvas.drawText(TextUtils.ellipsize(name, label, w - barLeft, TextUtils.TruncateAt.END).toString(),
                 w, top + label.textSize, label)
 
             val baseline = top + label.textSize + percent.textSize * 1.1f
@@ -164,9 +170,10 @@ class BatteryView(context: Context) : View(context) {
             // 棒は MPC のメーターのように、角丸の四角を SEGMENTS 個並べ、残量の分だけ点ける。
             // % の文字の高さの真ん中にそろえる
             val cy = baseline - percent.textSize * 0.36f
+            drawDeviceIcon(canvas, row.kind, iconS / 2, (top + label.textSize * 0.3f + cy) / 2, iconS, icon)
             val right = w - pctW - gap
             val cellGap = segH * 0.45f
-            val cellW = (right - cellGap * (SEGMENTS - 1)) / SEGMENTS
+            val cellW = (right - barLeft - cellGap * (SEGMENTS - 1)) / SEGMENTS
             // 1% でも残っていれば 1 つは点ける
             val lit = ((row.level + 5) / 10).coerceAtLeast(if (row.level > 0) 1 else 0)
             val on = when {
@@ -175,7 +182,7 @@ class BatteryView(context: Context) : View(context) {
                 else -> Gear.ON
             }
             for (k in 0 until SEGMENTS) {
-                val x = k * (cellW + cellGap)
+                val x = barLeft + k * (cellW + cellGap)
                 rect.set(x, cy - segH / 2, x + cellW, cy + segH / 2)
                 bar.color = if (k < lit) on else Gear.OFF
                 canvas.drawRoundRect(rect, segH * 0.25f, segH * 0.25f, bar)
