@@ -180,6 +180,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <!-- ウィジェット -->
+        <TextView
+            style="@style/FlipCover.Section"
+            android:text="ウィジェット" />
+
+        <TextView
+            android:id="@+id/widgetLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/pickWidget"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="ウィジェットを選ぶ" />
+
+        <Button
+            android:id="@+id/removeWidget"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ウィジェットを外す" />
+
         <!-- ライト -->
         <TextView
             style="@style/FlipCover.Section"

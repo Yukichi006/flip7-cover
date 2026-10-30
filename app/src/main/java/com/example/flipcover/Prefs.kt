@@ -146,6 +146,25 @@ class Prefs(context: Context) {
         get() = sp.getFloat("torchSize", 0.34f)
         set(v) = sp.edit().putFloat("torchSize", v).apply()
 
+    /** カバー画面に表示するほかのアプリのウィジェットの番号。置いていなければ -1。 */
+    var widgetId: Int
+        get() = sp.getInt("widgetId", -1)
+        set(v) = sp.edit().putInt("widgetId", v).apply()
+
+    // ウィジェットの中心と幅・高さ（画面に対する割合）。最初は時計の下、アプリのボタンより上に置く
+    var widgetX: Float
+        get() = sp.getFloat("widgetX", 0.5f)
+        set(v) = sp.edit().putFloat("widgetX", v).apply()
+    var widgetY: Float
+        get() = sp.getFloat("widgetY", 0.66f)
+        set(v) = sp.edit().putFloat("widgetY", v).apply()
+    var widgetW: Float
+        get() = sp.getFloat("widgetW", 0.8f)
+        set(v) = sp.edit().putFloat("widgetW", v).apply()
+    var widgetH: Float
+        get() = sp.getFloat("widgetH", 0.24f)
+        set(v) = sp.edit().putFloat("widgetH", v).apply()
+
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
     val appsX: Float
         get() = sp.getFloat("appsX", 0.5f)
@@ -173,6 +192,7 @@ class Prefs(context: Context) {
         .remove("launcherX").remove("launcherY").remove("launcherSize")
         .remove("gridCx").remove("gridCy").remove("gridW").remove("gridH")
         .remove("torchX").remove("torchY").remove("torchSize")
+        .remove("widgetX").remove("widgetY").remove("widgetW").remove("widgetH")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */

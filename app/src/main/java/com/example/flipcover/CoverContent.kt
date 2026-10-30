@@ -1,5 +1,6 @@
 package com.example.flipcover
 
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Canvas
@@ -9,7 +10,10 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.hardware.display.DisplayManager
+import android.os.Bundle
 import android.util.Size
+import android.util.SizeF
 import android.util.TypedValue
 import android.view.Display
 import android.view.Gravity
@@ -34,6 +38,7 @@ object CoverContent {
     const val TAG_LAUNCHER = "launcher"
     const val TAG_APP_GRID = "appGrid"
     const val TAG_TORCH = "torch"
+    const val TAG_WIDGET = "widget"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -105,7 +110,8 @@ object CoverContent {
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
         }
 
-        // アプリを開いたときは暗い幕の下に隠れるよう、アプリより先に置く
+        // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く
+        addWidget(context, root, size, prefs, editing)
         if (prefs.showTorch) {
             val tw = (prefs.torchSize * w).toInt()
             val torch = TorchSwitch(context, interactive = !editing).apply { tag = TAG_TORCH }
@@ -114,6 +120,34 @@ object CoverContent {
 
         addApps(context, root, size, prefs, onLaunch, editing, expandedPreview)
         return root
+    }
+
+    /**
+     * ほかのアプリのウィジェット（Suica の残高など）を置く。
+     * ウィジェットの文字の大きさがカバー画面と同じになるよう、カバー画面の密度で組み立てる。
+     */
+    private fun addWidget(context: Context, root: FrameLayout, size: Size, prefs: Prefs, editing: Boolean) {
+        val id = prefs.widgetId
+        if (id == -1) return
+        // ウィジェットのアプリがアンインストールされたときは何も置かない
+        val info = AppWidgetManager.getInstance(context).getAppWidgetInfo(id) ?: return
+        val cover = CoverOverlayService.findCoverDisplay(context.getSystemService(DisplayManager::class.java))
+        val onCover = runCatching { context.display?.displayId == cover?.displayId }.getOrDefault(false)
+        val widgetContext = if (cover != null && !onCover) context.createDisplayContext(cover) else context
+        val view = runCatching { WidgetHost.get(context).createView(widgetContext, id, info) }.getOrNull() ?: return
+
+        val ww = (prefs.widgetW * size.width).toInt()
+        val wh = (prefs.widgetH * size.height).toInt()
+        if (!editing) {
+            // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
+            val density = widgetContext.resources.displayMetrics.density
+            runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(ww / density, wh / density))) }
+        }
+        val frame = WidgetFrame(context, editing).apply {
+            tag = TAG_WIDGET
+            addView(view, FrameLayout.LayoutParams(-1, -1))
+        }
+        root.addView(frame, place(size, prefs.widgetX, prefs.widgetY, ww, wh))
     }
 
     /** 背景と一体のドット時計。時計の位置はほかの部品と同じく画面内に収めた値を使う。 */

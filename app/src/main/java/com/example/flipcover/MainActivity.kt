@@ -1,5 +1,7 @@
 package com.example.flipcover
 
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Intent
 import android.hardware.display.DisplayManager
@@ -24,10 +26,14 @@ class MainActivity : AppCompatActivity() {
     /** プレビューで、ボタンを開いたときの様子を見せる（保存しない、画面だけの切り替え）。 */
     private var expandedPreview = false
 
+    /** 選んでいる途中のウィジェットの番号（使用の許可や初期設定の画面から戻るまで）。 */
+    private var pendingWidgetId = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
+        pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET, -1) ?: -1
         editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
         findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
         modeGroup = findViewById(R.id.modeGroup)
@@ -72,6 +78,12 @@ class MainActivity : AppCompatActivity() {
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
         findViewById<Button>(R.id.launcherStyle).setOnClickListener { pickLauncherStyle() }
         bindSwitch(R.id.torchSwitch, prefs.showTorch) { prefs.showTorch = it }
+        findViewById<Button>(R.id.pickWidget).setOnClickListener { pickWidget() }
+        findViewById<Button>(R.id.removeWidget).setOnClickListener {
+            if (prefs.widgetId != -1) WidgetHost.get(this).deleteAppWidgetId(prefs.widgetId)
+            prefs.widgetId = -1
+            refresh()
+        }
 
         val speedLabel = findViewById<TextView>(R.id.speedLabel)
         findViewById<Slider>(R.id.speedSlider).apply {
@@ -102,6 +114,91 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_PENDING_WIDGET, pendingWidgetId)
+    }
+
+    /**
+     * カバー画面に置くウィジェットを選ぶ。
+     * 選んだら、使用の許可（初回だけ確認画面が出る）→ 必要ならウィジェットの初期設定、の順に進める。
+     */
+    private fun pickWidget() {
+        val am = AppWidgetManager.getInstance(this)
+        val pm = packageManager
+        val providers = am.installedProviders
+            .map { info ->
+                val app = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(info.provider.packageName, 0)) }
+                    .getOrDefault(info.provider.packageName)
+                info to "$app：${info.loadLabel(pm)}"
+            }
+            .sortedBy { it.second.lowercase() }
+        if (providers.isEmpty()) {
+            toast("置けるウィジェットが見つかりませんでした")
+            return
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("カバー画面に置くウィジェット")
+            .setItems(providers.map { it.second }.toTypedArray()) { _, i ->
+                val info = providers[i].first
+                val id = WidgetHost.get(this).allocateAppWidgetId()
+                pendingWidgetId = id
+                if (am.bindAppWidgetIdIfAllowed(id, info.provider)) {
+                    configureWidget()
+                } else {
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(
+                        Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider),
+                        REQ_BIND_WIDGET,
+                    )
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    /** 初期設定が必要なウィジェットなら、その画面を開く。不要ならそのまま置く。 */
+    private fun configureWidget() {
+        val id = pendingWidgetId
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
+        val optional = info != null &&
+            (info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL) != 0
+        if (info?.configure != null && !optional) {
+            runCatching {
+                WidgetHost.get(this).startAppWidgetConfigureActivityForResult(this, id, 0, REQ_CONFIGURE_WIDGET, null)
+            }.onFailure { finishWidget() }
+        } else {
+            finishWidget()
+        }
+    }
+
+    /** 選んだウィジェットを置き、前に置いていたものは片付ける。 */
+    private fun finishWidget() {
+        val old = prefs.widgetId
+        if (old != -1 && old != pendingWidgetId) WidgetHost.get(this).deleteAppWidgetId(old)
+        prefs.widgetId = pendingWidgetId
+        pendingWidgetId = -1
+        refresh()
+    }
+
+    private fun cancelWidget() {
+        if (pendingWidgetId != -1) WidgetHost.get(this).deleteAppWidgetId(pendingWidgetId)
+        pendingWidgetId = -1
+    }
+
+    @Deprecated("ウィジェットの許可・初期設定の画面からの戻りを受け取るため")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (pendingWidgetId == -1) return
+        when (requestCode) {
+            REQ_BIND_WIDGET -> if (resultCode == RESULT_OK) configureWidget() else cancelWidget()
+            REQ_CONFIGURE_WIDGET -> if (resultCode == RESULT_OK) finishWidget() else cancelWidget()
+        }
     }
 
     private fun bindSwitch(id: Int, initial: Boolean, save: (Boolean) -> Unit) {
@@ -223,6 +320,9 @@ class MainActivity : AppCompatActivity() {
             text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
             visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
         }
+        findViewById<TextView>(R.id.widgetLabel).text =
+            AppWidgetManager.getInstance(this).getAppWidgetInfo(prefs.widgetId)?.loadLabel(packageManager) ?: "なし"
+        findViewById<View>(R.id.removeWidget).visibility = if (prefs.widgetId != -1) View.VISIBLE else View.GONE
         findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
         }.joinToString("、").ifEmpty { "なし" }
@@ -265,5 +365,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val MAX_APPS = 16
+        private const val REQ_BIND_WIDGET = 1
+        private const val REQ_CONFIGURE_WIDGET = 2
+        private const val KEY_PENDING_WIDGET = "pendingWidget"
     }
 }

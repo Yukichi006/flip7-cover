@@ -111,6 +111,8 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
             overlay = view
             overlayWm = wm
             coverDisplayId = display.displayId
+            // 表示している間だけ、ウィジェットの更新（残高の変化など）を受け取る
+            if (prefs.widgetId != -1) runCatching { WidgetHost.get(this).startListening() }
         }
     }
 
@@ -136,6 +138,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     }
 
     private fun hide() {
+        if (overlay != null) runCatching { WidgetHost.get(this).stopListening() }
         overlay?.let { v -> runCatching { overlayWm?.removeView(v) } }
         overlay = null
         overlayWm = null
