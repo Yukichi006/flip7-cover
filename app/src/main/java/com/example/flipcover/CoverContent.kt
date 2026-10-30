@@ -153,11 +153,11 @@ object CoverContent {
         return root
     }
 
-    /** 縦に並べたウィジェットと、それを入れる範囲（[width]×[height] px）。 */
+    /** マス目に並べたウィジェットと、それを入れる範囲（[width]×[height] px）。 */
     private class Widgets(val area: FrameLayout, val frames: List<View>, val width: Int, val height: Int)
 
     /**
-     * ほかのアプリのウィジェット（Suica の残高など）を、範囲の中に縦に等分して並べる。置いていなければ null。
+     * ほかのアプリのウィジェット（Suica の残高など）を、範囲の中に 2 列のマス目で並べる。置いていなければ null。
      * ウィジェットの文字の大きさがカバー画面と同じになるよう、カバー画面の密度で組み立てる。
      * [outline] のときは、プレビューで範囲が分かるよう点線で囲む。
      */
@@ -173,8 +173,12 @@ object CoverContent {
 
         val aw = (prefs.widgetW * size.width).toInt()
         val ah = (prefs.widgetH * size.height).toInt()
+        // 2×2 のウィジェットを 4 つ並べられるよう、2 列のマス目にする（1 つだけなら範囲いっぱい）
+        val cols = if (widgets.size == 1) 1 else WIDGET_COLUMNS
+        val rows = (widgets.size + cols - 1) / cols
         val gap = (size.width * 0.02f).toInt()
-        val cellH = (ah - gap * (widgets.size - 1)) / widgets.size
+        val cellW = (aw - gap * (cols - 1)) / cols
+        val cellH = (ah - gap * (rows - 1)) / rows
         val area = FrameLayout(context).apply {
             tag = TAG_WIDGET
             if (outline) background = GradientDrawable().apply {
@@ -187,13 +191,14 @@ object CoverContent {
                 ?: return@mapIndexedNotNull null
             if (!editing) {
                 // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
-                runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(aw / density, cellH / density))) }
+                runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(cellW / density, cellH / density))) }
             }
             WidgetFrame(context, editing).also { frame ->
                 frame.addView(view, FrameLayout.LayoutParams(-1, -1))
-                area.addView(frame, FrameLayout.LayoutParams(aw, cellH).apply {
+                area.addView(frame, FrameLayout.LayoutParams(cellW, cellH).apply {
                     gravity = Gravity.TOP or Gravity.START
-                    topMargin = i * (cellH + gap)
+                    leftMargin = (i % cols) * (cellW + gap)
+                    topMargin = (i / cols) * (cellH + gap)
                 })
             }
         }
@@ -317,6 +322,9 @@ object CoverContent {
 
     /** 展開したときのグリッドの列数。 */
     private const val GRID_COLUMNS = 4
+
+    /** ウィジェットを並べる列の数。 */
+    private const val WIDGET_COLUMNS = 2
 
     /** ボタンで開いたときに後ろを暗くする幕の色。 */
     private const val SCRIM_COLOR = 0xB01C1C1A.toInt()

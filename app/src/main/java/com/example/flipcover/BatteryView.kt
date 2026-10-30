@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -26,6 +27,7 @@ import androidx.core.content.IntentCompat
  * 1 行目に名前、2 行目に棒と % を右寄せで描く。上から本体、Bluetooth 機器の順。
  *
  * Bluetooth 機器の残量は、機器が Android に報告している値を使う（イヤホンやヘッドホンの多くが対応）。
+ * 報告しない Bluetooth LE 機器（Galaxy Fit など）は、[BleBattery] で機器に直接問い合わせる。
  * 読むには「付近のデバイス」の許可が要り、許可がなければ本体だけを表示する。
  */
 @SuppressLint("ViewConstructor")
@@ -61,11 +63,17 @@ class BatteryView(context: Context) : View(context) {
                     val device = intent.btDevice() ?: return
                     btLevels[device.address] = intent.getIntExtra(EXTRA_BT_BATTERY, -1)
                 }
-                BluetoothDevice.ACTION_ACL_DISCONNECTED -> intent.btDevice()?.let { btLevels.remove(it.address) }
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> intent.btDevice()?.let {
+                    btLevels.remove(it.address)
+                    BleBattery.forget(it)
+                }
             }
             refresh()
         }
     }
+
+    // 直接問い合わせた機器の残量が届いたら描き直す
+    private val onBleLevel: () -> Unit = { refresh() }
 
     // 通知が来ない機器もあるので、ときどき読み直す
     private val poll = object : Runnable {
@@ -83,12 +91,14 @@ class BatteryView(context: Context) : View(context) {
         }
         // 電池の通知は登録した時点の状態がすぐに届く
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)?.let { readPhone(it) }
+        BleBattery.addListener(onBleLevel)
         post(poll)
     }
 
     override fun onDetachedFromWindow() {
         runCatching { context.unregisterReceiver(receiver) }
         removeCallbacks(poll)
+        BleBattery.removeListener(onBleLevel)
         super.onDetachedFromWindow()
     }
 
@@ -112,11 +122,19 @@ class BatteryView(context: Context) : View(context) {
     @SuppressLint("MissingPermission")
     private fun bluetoothRows(): List<Row> {
         if (!canReadBluetooth(context)) return emptyList()
-        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return emptyList()
-        val bonded = runCatching { adapter.bondedDevices }.getOrNull().orEmpty()
+        val manager = context.getSystemService(BluetoothManager::class.java) ?: return emptyList()
+        val bonded = runCatching { manager.adapter?.bondedDevices }.getOrNull().orEmpty()
+        // Galaxy Fit などの Bluetooth LE 機器は、つながっていても Android に残量を報告しないので、直接問い合わせる
+        val leConnected = runCatching { manager.getConnectedDevices(BluetoothProfile.GATT) }.getOrNull().orEmpty()
+            .map { it.address }.toSet()
         return bonded.mapNotNull { d ->
-            val level = readBtLevel(d).takeIf { it in 0..100 } ?: btLevels[d.address]?.takeIf { it in 0..100 }
-                ?: return@mapNotNull null
+            val reported = readBtLevel(d).takeIf { it in 0..100 } ?: btLevels[d.address]?.takeIf { it in 0..100 }
+            val le = d.type == BluetoothDevice.DEVICE_TYPE_LE || d.type == BluetoothDevice.DEVICE_TYPE_DUAL
+            val level = reported ?: if (le && (d.address in leConnected || isConnected(d))) {
+                BleBattery.request(context, d)
+                BleBattery.level(d)
+            } else null
+            level ?: return@mapNotNull null
             Row(runCatching { d.alias ?: d.name }.getOrNull() ?: d.address, level, false)
         }.sortedBy { it.name }
     }
@@ -191,6 +209,11 @@ class BatteryView(context: Context) : View(context) {
         private fun readBtLevel(device: BluetoothDevice): Int =
             runCatching { BluetoothDevice::class.java.getMethod("getBatteryLevel").invoke(device) as Int }
                 .getOrDefault(-1)
+
+        /** 機器がつながっているか（公開 API ではないので、読めなければ false）。 */
+        private fun isConnected(device: BluetoothDevice): Boolean =
+            runCatching { BluetoothDevice::class.java.getMethod("isConnected").invoke(device) as Boolean }
+                .getOrDefault(false)
 
         private fun Intent.btDevice(): BluetoothDevice? =
             IntentCompat.getParcelableExtra(this, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)

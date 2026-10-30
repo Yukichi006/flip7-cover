@@ -190,18 +190,19 @@ class Prefs(context: Context) {
         get() = sp.getFloat("widgetButtonSize", 0.13f)
         set(v) = sp.edit().putFloat("widgetButtonSize", v).apply()
 
-    // ウィジェットを縦に並べる範囲（中心と幅・高さ、画面に対する割合）。最初は時計のあたりに大きく広げる
+    // ウィジェットを並べる範囲（中心と幅・高さ、画面に対する割合）。
+    // 最初は 2×2 のウィジェットが 4 つほぼ正方形に収まり、左下のボタンとも重ならない大きさにする
     var widgetX: Float
         get() = sp.getFloat("widgetX", 0.5f)
         set(v) = sp.edit().putFloat("widgetX", v).apply()
     var widgetY: Float
-        get() = sp.getFloat("widgetY", 0.42f)
+        get() = sp.getFloat("widgetY", 0.37f)
         set(v) = sp.edit().putFloat("widgetY", v).apply()
     var widgetW: Float
-        get() = sp.getFloat("widgetW", 0.92f)
+        get() = sp.getFloat("widgetW", 0.74f)
         set(v) = sp.edit().putFloat("widgetW", v).apply()
     var widgetH: Float
-        get() = sp.getFloat("widgetH", 0.5f)
+        get() = sp.getFloat("widgetH", 0.66f)
         set(v) = sp.edit().putFloat("widgetH", v).apply()
 
     /** アイコンをまだ動かしていないときに並べる列の中心。 */
