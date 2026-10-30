@@ -130,7 +130,7 @@ class BatteryView(context: Context) : View(context) {
         percent.setShadowLayer(rowH * 0.12f, 0f, 0f, SHADOW)
         val pctW = percent.measureText("100%")
         val gap = rowH * 0.14f
-        val barH = rowH * 0.11f
+        val segH = rowH * 0.17f
 
         rows.forEachIndexed { i, row ->
             val top = i * rowH
@@ -141,19 +141,25 @@ class BatteryView(context: Context) : View(context) {
             val baseline = top + label.textSize + percent.textSize * 1.1f
             canvas.drawText("${row.level}%", w, baseline, percent)
 
-            // 棒は % の文字の高さの真ん中にそろえる
+            // 棒は MPC のメーターのように、角丸の四角を SEGMENTS 個並べ、残量の分だけ点ける。
+            // % の文字の高さの真ん中にそろえる
             val cy = baseline - percent.textSize * 0.36f
             val right = w - pctW - gap
-            rect.set(0f, cy - barH / 2, right, cy + barH / 2)
-            bar.color = Gear.OFF
-            canvas.drawRoundRect(rect, barH / 2, barH / 2, bar)
-            rect.right = right * row.level / 100f
-            bar.color = when {
+            val cellGap = segH * 0.45f
+            val cellW = (right - cellGap * (SEGMENTS - 1)) / SEGMENTS
+            // 1% でも残っていれば 1 つは点ける
+            val lit = ((row.level + 5) / 10).coerceAtLeast(if (row.level > 0) 1 else 0)
+            val on = when {
                 row.charging -> Gear.YELLOW
                 row.level <= LOW -> Gear.ORANGE
                 else -> Gear.ON
             }
-            if (rect.width() > 0f) canvas.drawRoundRect(rect, barH / 2, barH / 2, bar)
+            for (k in 0 until SEGMENTS) {
+                val x = k * (cellW + cellGap)
+                rect.set(x, cy - segH / 2, x + cellW, cy + segH / 2)
+                bar.color = if (k < lit) on else Gear.OFF
+                canvas.drawRoundRect(rect, segH * 0.25f, segH * 0.25f, bar)
+            }
         }
     }
 
@@ -163,6 +169,9 @@ class BatteryView(context: Context) : View(context) {
 
         /** 並べる行の最大数（本体 + Bluetooth 機器 3 つ）。 */
         const val MAX_ROWS = 4
+
+        /** 棒を区切るセグメントの数（1 つで 10%）。 */
+        private const val SEGMENTS = 10
 
         /** これ以下ならオレンジにして知らせる（%）。 */
         private const val LOW = 20
