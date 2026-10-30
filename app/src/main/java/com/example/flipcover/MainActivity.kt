@@ -168,9 +168,10 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(section).visibility = if (selected) View.VISIBLE else View.GONE
             findViewById<TextView>(item).apply {
                 if (selected) {
+                    val pill = MaterialColors.getColor(this, com.google.android.material.R.attr.colorSecondaryContainer)
                     background = GradientDrawable().apply {
                         cornerRadius = 24 * resources.displayMetrics.density
-                        setColor(MaterialColors.getColor(this@apply, com.google.android.material.R.attr.colorSecondaryContainer))
+                        setColor(pill)
                     }
                     setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSecondaryContainer))
                     setTypeface(null, Typeface.BOLD)
