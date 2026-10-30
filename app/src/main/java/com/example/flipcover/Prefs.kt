@@ -146,6 +146,22 @@ class Prefs(context: Context) {
         get() = sp.getFloat("torchSize", 0.34f)
         set(v) = sp.edit().putFloat("torchSize", v).apply()
 
+    /** 本体と Bluetooth 機器の電池残量を表示する。 */
+    var showBattery: Boolean
+        get() = sp.getBoolean("showBattery", true)
+        set(v) = sp.edit().putBoolean("showBattery", v).apply()
+
+    // 電池残量の中心と幅（画面に対する割合）。最初はライトのスイッチの下、右端に寄せる
+    var batteryX: Float
+        get() = sp.getFloat("batteryX", 0.86f)
+        set(v) = sp.edit().putFloat("batteryX", v).apply()
+    var batteryY: Float
+        get() = sp.getFloat("batteryY", 0.27f)
+        set(v) = sp.edit().putFloat("batteryY", v).apply()
+    var batterySize: Float
+        get() = sp.getFloat("batterySize", 0.24f)
+        set(v) = sp.edit().putFloat("batterySize", v).apply()
+
     /** カバー画面に置くほかのアプリのウィジェットの番号（表示順）。 */
     var widgetIds: List<Int>
         get() = sp.getString("widgetIds", null)?.split('|')?.mapNotNull { it.toIntOrNull() }
@@ -217,6 +233,7 @@ class Prefs(context: Context) {
         .remove("torchX").remove("torchY").remove("torchSize")
         .remove("widgetX").remove("widgetY").remove("widgetW").remove("widgetH")
         .remove("widgetButtonX").remove("widgetButtonY").remove("widgetButtonSize")
+        .remove("batteryX").remove("batteryY").remove("batterySize")
         .apply()
 
     /** アプリごとのアイコンの位置（中心、画面に対する割合）。まだ動かしていないアプリは null。 */

@@ -1,5 +1,6 @@
 package com.example.flipcover
 
+import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
@@ -13,6 +14,7 @@ import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -25,6 +27,12 @@ class MainActivity : AppCompatActivity() {
 
     /** プレビューで、ボタンを開いたときの様子を見せる（保存しない、画面だけの切り替え）。 */
     private var expandedPreview = false
+
+    /** Bluetooth 機器の電池残量を読むための許可を求める。 */
+    private val askBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) toast("許可されなかったため、本体の残量だけを表示します")
+        refresh()
+    }
 
     /** 選んでいる途中のウィジェットの番号（使用の許可や初期設定の画面から戻るまで）。 */
     private var pendingWidgetId = -1
@@ -80,6 +88,10 @@ class MainActivity : AppCompatActivity() {
             pickButtonStyle("ボタンのデザイン", prefs.launcherStyle) { prefs.launcherStyle = it }
         }
         bindSwitch(R.id.torchSwitch, prefs.showTorch) { prefs.showTorch = it }
+        bindSwitch(R.id.batterySwitch, prefs.showBattery) { prefs.showBattery = it }
+        findViewById<Button>(R.id.allowBluetooth).setOnClickListener {
+            askBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
         findViewById<Button>(R.id.pickWidget).setOnClickListener { pickWidget() }
         findViewById<Button>(R.id.removeWidget).setOnClickListener { removeWidget() }
         bindSwitch(R.id.widgetButtonSwitch, prefs.useWidgetButton) { prefs.useWidgetButton = it }
@@ -341,6 +353,9 @@ class MainActivity : AppCompatActivity() {
             text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
             visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
         }
+        // Bluetooth 機器の残量は、許可がないときだけ許可のボタンを出す
+        findViewById<View>(R.id.allowBluetooth).visibility =
+            if (prefs.showBattery && !BatteryView.canReadBluetooth(this)) View.VISIBLE else View.GONE
         val widgetIds = prefs.widgetIds
         findViewById<TextView>(R.id.widgetLabel).text = widgetIds.joinToString("、") { widgetLabel(it) }.ifEmpty { "なし" }
         findViewById<View>(R.id.removeWidget).visibility = if (widgetIds.isNotEmpty()) View.VISIBLE else View.GONE

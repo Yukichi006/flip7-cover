@@ -40,6 +40,7 @@ object CoverContent {
     const val TAG_TORCH = "torch"
     const val TAG_WIDGET = "widget"
     const val TAG_WIDGET_BUTTON = "widgetButton"
+    const val TAG_BATTERY = "battery"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
     fun coverSize(display: Display?): Size {
@@ -109,6 +110,13 @@ object CoverContent {
             val dw = (prefs.digitalSize * w).toInt()
             addWithBackdrop(context, root, size, SecondsClockView(context), dw, (dw * 0.3f).toInt(),
                 TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
+        }
+
+        // 電池残量は常に出しておく情報なので、ボタンで開く部品より先（下）に置く
+        if (prefs.showBattery) {
+            val bw = (prefs.batterySize * w).toInt()
+            val bh = (bw * BatteryView.ROW_RATIO * BatteryView.MAX_ROWS).toInt()
+            root.addView(BatteryView(context).apply { tag = TAG_BATTERY }, place(size, prefs.batteryX, prefs.batteryY, bw, bh))
         }
 
         // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く

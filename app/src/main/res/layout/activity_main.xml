@@ -180,6 +180,24 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
+        <!-- 電池残量 -->
+        <TextView
+            style="@style/FlipCover.Section"
+            android:text="電池残量" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/batterySwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="本体と Bluetooth 機器の残量を表示" />
+
+        <Button
+            android:id="@+id/allowBluetooth"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Bluetooth 機器の残量も表示する（許可が必要）" />
+
         <!-- ウィジェット -->
         <TextView
             style="@style/FlipCover.Section"

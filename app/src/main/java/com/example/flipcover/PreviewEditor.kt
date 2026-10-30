@@ -211,6 +211,11 @@ class PreviewEditor(
                 prefs.widgetW = (prefs.widgetW * pinch).coerceIn(0.15f, 1f)
                 prefs.widgetH = (prefs.widgetH * pinch).coerceIn(0.08f, 1f)
             }
+            tag == CoverContent.TAG_BATTERY -> {
+                prefs.batteryX = cx
+                prefs.batteryY = cy
+                prefs.batterySize = (prefs.batterySize * pinch).coerceIn(0.12f, 0.6f)
+            }
             tag == CoverContent.TAG_WIDGET_BUTTON -> {
                 prefs.widgetButtonX = cx
                 prefs.widgetButtonY = cy
@@ -235,6 +240,7 @@ class PreviewEditor(
         val MOVABLE = setOf(
             CoverContent.TAG_CLOCK, CoverContent.TAG_DIGITAL, CoverContent.TAG_LAUNCHER, CoverContent.TAG_APP_GRID,
             CoverContent.TAG_TORCH, CoverContent.TAG_WIDGET, CoverContent.TAG_WIDGET_BUTTON,
+            CoverContent.TAG_BATTERY,
         )
 
         /** 吸い付く位置（画面に対する割合）。12 等分なので、2・3・4・6 分割の線も含む。 */
