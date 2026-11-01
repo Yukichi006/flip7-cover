@@ -3,6 +3,7 @@ package com.example.flipcover
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.res.Resources
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -198,12 +199,22 @@ object CoverContent {
         val frames = widgets.mapIndexedNotNull { i, (id, info) ->
             val view = runCatching { WidgetHost.get(context).createView(widgetContext, id, info) }.getOrNull()
                 ?: return@mapIndexedNotNull null
+            // ウィジェットは本来の大きさ（ホーム画面で想定している大きさ）より小さいと、はみ出た所が切れてしまう。
+            // そこで、マスより小さくならない大きさで組み立ててから、マスに収まるよう縮小する
+            val sysDensity = Resources.getSystem().displayMetrics.density
+            val naturalW = maxOf(info.minWidth / sysDensity, info.targetCellWidth * HOME_CELL_DP) * density
+            val naturalH = maxOf(info.minHeight / sysDensity, info.targetCellHeight * HOME_CELL_DP) * density
+            val lw = maxOf(cellW.toFloat(), naturalW)
+            val lh = maxOf(cellH.toFloat(), naturalH)
+            val scale = minOf(cellW / lw, cellH / lh)
             if (!editing) {
                 // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
-                runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(cellW / density, cellH / density))) }
+                runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(lw / density, lh / density))) }
             }
+            view.scaleX = scale
+            view.scaleY = scale
             WidgetFrame(context, editing, onTouch) { onTap?.invoke(info.provider.packageName) }.also { frame ->
-                frame.addView(view, FrameLayout.LayoutParams(-1, -1))
+                frame.addView(view, FrameLayout.LayoutParams(lw.toInt(), lh.toInt(), Gravity.CENTER))
                 area.addView(frame, FrameLayout.LayoutParams(cellW, cellH).apply {
                     gravity = Gravity.TOP or Gravity.START
                     leftMargin = (i % cols) * (cellW + gap)
@@ -334,6 +345,9 @@ object CoverContent {
 
     /** ボタンで開いたウィジェットが、触られないまま自動で閉じるまでの時間。 */
     private const val WIDGET_AUTO_CLOSE_MS = 30_000L
+
+    /** ホーム画面の 1 マスのおよその大きさ（dp）。ウィジェットの本来の大きさを見積もるのに使う。 */
+    private const val HOME_CELL_DP = 90f
 
     /** ウィジェットを並べる列の数。 */
     private const val WIDGET_COLUMNS = 2
