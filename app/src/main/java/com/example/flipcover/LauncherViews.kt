@@ -156,6 +156,7 @@ class AppLauncher(
     private val scrim: View,
     private val grid: View,
     private val icons: List<View>,
+    private val autoCloseMs: Long = AUTO_CLOSE_MS,
 ) {
     private var open = false
     private val autoClose = Runnable { setOpen(false) }
@@ -166,6 +167,13 @@ class AppLauncher(
         icons.forEach { it.visibility = View.INVISIBLE }
         button.setOnClickListener { setOpen(!open) }
         scrim.setOnClickListener { setOpen(false) }
+    }
+
+    /** 開いている中身が触られたら、自動で閉じるまでの時間を数え直す。 */
+    fun keepOpen() {
+        if (!open) return
+        button.removeCallbacks(autoClose)
+        button.postDelayed(autoClose, autoCloseMs)
     }
 
     fun setOpen(value: Boolean) {
@@ -192,7 +200,7 @@ class AppLauncher(
                     .setStartDelay(i * 30L).setDuration(220).setInterpolator(DecelerateInterpolator())
                     .start()
             }
-            button.postDelayed(autoClose, AUTO_CLOSE_MS)
+            button.postDelayed(autoClose, autoCloseMs)
         } else {
             scrim.animate().alpha(0f).setDuration(160)
                 .withEndAction { if (!open) scrim.visibility = View.INVISIBLE }.start()

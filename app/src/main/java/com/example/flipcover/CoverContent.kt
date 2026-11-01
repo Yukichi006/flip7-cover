@@ -123,7 +123,10 @@ object CoverContent {
 
         // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く
         val showOpen = editing && expandedPreview
-        val widgets = buildWidgets(context, size, prefs, editing, showOpen && prefs.useWidgetButton, onWidgetTap)
+        // ウィジェットに触っている間は開いたままにする（あとで作るので、いったん null）
+        var widgetLauncher: AppLauncher? = null
+        val widgets = buildWidgets(context, size, prefs, editing, showOpen && prefs.useWidgetButton,
+            onTouch = { widgetLauncher?.keepOpen() }, onTap = onWidgetTap)
         var widgetButton: LauncherButton? = null
         if (widgets != null && !prefs.useWidgetButton) {
             root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
@@ -150,7 +153,8 @@ object CoverContent {
             } else null
             root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
             if (showOpen) widgetButton.showOpen()
-            else if (scrim != null) AppLauncher(widgetButton, scrim, widgets.area, widgets.frames)
+            // 更新ボタンを押して結果を待つこともあるので、アプリより長く開いておく
+            else if (scrim != null) widgetLauncher = AppLauncher(widgetButton, scrim, widgets.area, widgets.frames, WIDGET_AUTO_CLOSE_MS)
         }
         return root
     }
@@ -165,7 +169,7 @@ object CoverContent {
      */
     private fun buildWidgets(
         context: Context, size: Size, prefs: Prefs, editing: Boolean, outline: Boolean,
-        onTap: ((String) -> Unit)?,
+        onTouch: () -> Unit, onTap: ((String) -> Unit)?,
     ): Widgets? {
         val am = AppWidgetManager.getInstance(context)
         // ウィジェットのアプリがアンインストールされたものは飛ばす
@@ -198,7 +202,7 @@ object CoverContent {
                 // ウィジェットのアプリに表示する大きさを知らせ、合うレイアウトを選んでもらう
                 runCatching { view.updateAppWidgetSize(Bundle(), listOf(SizeF(cellW / density, cellH / density))) }
             }
-            WidgetFrame(context, editing) { onTap?.invoke(info.provider.packageName) }.also { frame ->
+            WidgetFrame(context, editing, onTouch) { onTap?.invoke(info.provider.packageName) }.also { frame ->
                 frame.addView(view, FrameLayout.LayoutParams(-1, -1))
                 area.addView(frame, FrameLayout.LayoutParams(cellW, cellH).apply {
                     gravity = Gravity.TOP or Gravity.START
@@ -327,6 +331,9 @@ object CoverContent {
 
     /** 展開したときのグリッドの列数。 */
     private const val GRID_COLUMNS = 4
+
+    /** ボタンで開いたウィジェットが、触られないまま自動で閉じるまでの時間。 */
+    private const val WIDGET_AUTO_CLOSE_MS = 30_000L
 
     /** ウィジェットを並べる列の数。 */
     private const val WIDGET_COLUMNS = 2

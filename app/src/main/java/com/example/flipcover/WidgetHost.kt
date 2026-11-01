@@ -25,13 +25,14 @@ object WidgetHost {
 /**
  * ウィジェットを包む枠。プレビューで編集しているときは、ウィジェットのボタンに指を取られず
  * ドラッグ・ピンチで動かせるよう、タッチを受け取らずに外側へ回す。
- * カバー画面では、ウィジェットがタップされたら（指をほとんど動かさずに離したら）[onTap] で知らせる。
- * タッチそのものはウィジェットに渡す。
+ * カバー画面では、触られたら [onTouch]、タップされたら（指をほとんど動かさずに離したら）[onTap] で知らせる。
+ * タッチそのものはウィジェットに渡し、ウィジェットのボタン以外の所に触れても後ろ（閉じるための暗い幕）へは通さない。
  */
 @SuppressLint("ViewConstructor")
 class WidgetFrame(
     context: Context,
     private val editing: Boolean,
+    private val onTouch: (() -> Unit)? = null,
     private val onTap: (() -> Unit)? = null,
 ) : FrameLayout(context) {
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -44,6 +45,7 @@ class WidgetFrame(
             MotionEvent.ACTION_DOWN -> {
                 downX = ev.x
                 downY = ev.y
+                onTouch?.invoke()
             }
             MotionEvent.ACTION_UP ->
                 if (abs(ev.x - downX) < slop && abs(ev.y - downY) < slop) onTap?.invoke()
@@ -52,5 +54,5 @@ class WidgetFrame(
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent) = if (editing) false else super.onTouchEvent(event)
+    override fun onTouchEvent(event: MotionEvent) = !editing
 }
