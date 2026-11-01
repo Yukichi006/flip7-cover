@@ -164,6 +164,9 @@ object CoverContent {
         val frames = widgets.mapIndexedNotNull { i, (id, info) ->
             val view = runCatching { WidgetHost.get(context).createView(widgetContext, id, info) }.getOrNull()
                 ?: return@mapIndexedNotNull null
+            // 標準ではウィジェットの周りに余白が付き、角を丸めても余白の角が丸まるだけになる。
+            // ホーム画面と同じように余白をなくし、ウィジェットそのものの角を丸める
+            view.setPadding(0, 0, 0, 0)
             // ウィジェットは本来の大きさ（ホーム画面で想定している大きさ）より小さいと、はみ出た所が切れてしまう。
             // そこで、マスより小さくならない大きさで組み立ててから、マスに収まるよう縮小する
             val sysDensity = Resources.getSystem().displayMetrics.density
