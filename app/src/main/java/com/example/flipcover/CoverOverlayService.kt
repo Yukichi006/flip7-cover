@@ -72,6 +72,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
             dismissedUntilReopen = false
             // 起動待ちのまま開いたときは、次に閉じたときの表示を消してしまわないよう取り消す
             launchingPackage = null
+            widgetTapped = false
             handler.removeCallbacks(fadeOut)
             hide()
             return
@@ -146,11 +147,21 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private fun onWidgetTapped(packageName: String) {
         if (launchingPackage != null) return
         launchingPackage = packageName
+        widgetTapped = true
         handler.removeCallbacks(forgetWidgetApp)
         handler.postDelayed(forgetWidgetApp, WIDGET_APP_WAIT_MS)
     }
 
-    private val forgetWidgetApp = Runnable { launchingPackage = null }
+    /**
+     * ウィジェットのタップから待っている途中か。モバイルSuica のように、残高を読むのに
+     * 「おサイフケータイ」など別のアプリの画面を開くウィジェットもあるので、その間はどのアプリの画面でも消す。
+     */
+    private var widgetTapped = false
+
+    private val forgetWidgetApp = Runnable {
+        launchingPackage = null
+        widgetTapped = false
+    }
 
     private fun hide() {
         if (overlay != null) runCatching { WidgetHost.get(this).stopListening() }
@@ -167,7 +178,11 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = launchingPackage ?: return
-        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && event.packageName?.toString() == pkg) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val shown = event.packageName?.toString() ?: return
+        val opened = shown == pkg || (widgetTapped && shown != packageName && shown !in SYSTEM_PACKAGES)
+        if (opened) {
+            widgetTapped = false
             // アプリの画面の上に表示が戻ってこないよう、閉じ直すまでは出さない
             dismissedUntilReopen = true
             handler.removeCallbacks(forgetWidgetApp)
@@ -181,6 +196,9 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     companion object {
         /** アプリの画面が出たことが分からなくても、この時間でオーバーレイを消す。 */
         private const val LAUNCH_TIMEOUT_MS = 1500L
+
+        /** 画面の切り替わりを知らせてくるが、アプリの画面ではないもの（通知パネルなど）。 */
+        private val SYSTEM_PACKAGES = setOf("com.android.systemui", "android")
 
         /** ウィジェットをタップしてから、そのアプリの画面が出るのを待つ時間。 */
         private const val WIDGET_APP_WAIT_MS = 4000L
