@@ -37,6 +37,17 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     /** カバー画面で起動中のアプリ。その画面が出たらオーバーレイを消す。 */
     private var launchingPackage: String? = null
 
+    /** オーバーレイを消して見せているアプリ。そこから戻ってきたら、オーバーレイを出し直す。 */
+    private var openedApp: String? = null
+
+    /**
+     * 閉じているときにカバー画面の奥に出ていた画面（Samsung の待受画面など）のアプリ。
+     * 開いたアプリからここへ戻ったら、アプリを閉じたと判断する。
+     */
+    private val coverHomes = mutableSetOf<String>()
+
+    private var folded = false
+
     override fun onServiceConnected() {
         prefs = Prefs(this)
         prefs.registerListener(this)
@@ -65,11 +76,12 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private fun update() {
         val cover = findCoverDisplay(displayManager)
         val main = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
-        val folded = cover != null && cover.state == Display.STATE_ON &&
+        folded = cover != null && cover.state == Display.STATE_ON &&
             main?.state != Display.STATE_ON
 
         if (!folded) {
             dismissedUntilReopen = false
+            openedApp = null
             // 起動待ちのまま開いたときは、次に閉じたときの表示を消してしまわないよう取り消す
             launchingPackage = null
             widgetTapped = false
@@ -171,17 +183,35 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     }
 
     private val fadeOut = Runnable {
+        openedApp = launchingPackage
         launchingPackage = null
         val v = overlay ?: return@Runnable
         v.animate().alpha(0f).setDuration(150).withEndAction { if (overlay === v) hide() }.start()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val pkg = launchingPackage ?: return
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val shown = event.packageName?.toString() ?: return
-        val opened = shown == pkg || (widgetTapped && shown != packageName && shown !in SYSTEM_PACKAGES)
-        if (opened) {
+        if (!folded || shown == packageName) return
+
+        val opened = openedApp
+        if (opened != null) {
+            // 開いたアプリから待受画面（ホーム）へ戻ったら、オーバーレイを出し直す。
+            // キーボードや、途中で出る別のアプリの画面では戻さない
+            if (shown != opened && (shown in coverHomes || shown in homePackages())) {
+                openedApp = null
+                dismissedUntilReopen = false
+                update()
+            }
+            return
+        }
+        val pkg = launchingPackage
+        if (pkg == null) {
+            // アプリを開いていない間にカバー画面に出る画面を、待受画面として覚えておく
+            coverHomes += shown
+            return
+        }
+        if (shown == pkg || (widgetTapped && shown !in SYSTEM_PACKAGES)) {
             widgetTapped = false
             // アプリの画面の上に表示が戻ってこないよう、閉じ直すまでは出さない
             dismissedUntilReopen = true
@@ -192,6 +222,11 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         }
     }
     override fun onInterrupt() {}
+
+    /** ホームアプリ（ランチャー）のパッケージ名。 */
+    private fun homePackages(): Set<String> =
+        packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            .map { it.activityInfo.packageName }.toSet()
 
     companion object {
         /** アプリの画面が出たことが分からなくても、この時間でオーバーレイを消す。 */
