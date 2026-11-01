@@ -215,10 +215,11 @@ object CoverContent {
             }
             view.scaleX = scale
             view.scaleY = scale
-            // ホーム画面と同じように、ウィジェットの角を丸く切り抜く
+            // ホーム画面と同じように、ウィジェットの角を丸く切り抜く。
+            // Galaxy ではシステムの値が 0 のことがあるので、そのときはホーム画面に近い丸さにする
             val radius = runCatching {
                 widgetContext.resources.getDimension(android.R.dimen.system_app_widget_background_radius)
-            }.getOrDefault(16 * density)
+            }.getOrNull()?.takeIf { it > 0f } ?: (WIDGET_CORNER_DP * density)
             view.outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(v: View, outline: Outline) = outline.setRoundRect(0, 0, v.width, v.height, radius)
             }
@@ -355,6 +356,9 @@ object CoverContent {
 
     /** ボタンで開いたウィジェットが、触られないまま自動で閉じるまでの時間。 */
     private const val WIDGET_AUTO_CLOSE_MS = 30_000L
+
+    /** ウィジェットの角の丸さ（dp）。システムに値がないときに使う。 */
+    private const val WIDGET_CORNER_DP = 20f
 
     /** ホーム画面の 1 マスのおよその大きさ（dp）。ウィジェットの本来の大きさを見積もるのに使う。 */
     private const val HOME_CELL_DP = 90f
