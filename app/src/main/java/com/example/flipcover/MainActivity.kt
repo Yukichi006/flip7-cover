@@ -14,7 +14,6 @@ import android.util.TypedValue
 import android.view.Display
 import android.view.View
 import android.widget.Button
-import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -28,7 +27,6 @@ import com.google.android.material.slider.Slider
 class MainActivity : AppCompatActivity() {
     private lateinit var prefs: Prefs
     private lateinit var editor: PreviewEditor
-    private lateinit var modeGroup: RadioGroup
 
     /** プレビューで、ボタンを開いたときの様子を見せる（保存しない、画面だけの切り替え）。 */
     private var expandedPreview = false
@@ -45,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     /** 左の列の項目と、選んだときに右に出す設定のまとまり。 */
     private val sections = mapOf(
         R.id.navGeneral to R.id.sectionGeneral,
-        R.id.navBackground to R.id.sectionBackground,
         R.id.navClock to R.id.sectionClock,
         R.id.navApps to R.id.sectionApps,
         R.id.navWidgets to R.id.sectionWidgets,
@@ -66,7 +63,6 @@ class MainActivity : AppCompatActivity() {
         selectCategory(category)
         editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
         findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
-        modeGroup = findViewById(R.id.modeGroup)
 
         findViewById<Button>(R.id.openAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -79,10 +75,7 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
-        bindSwitch(R.id.boldMinuteSwitch, prefs.boldMinute) { prefs.boldMinute = it }
-        bindSwitch(R.id.minuteTipSwitch, prefs.minuteTip) { prefs.minuteTip = it }
         bindSwitch(R.id.digitalSwitch, prefs.showDigital) { prefs.showDigital = it }
-        bindSwitch(R.id.taperSwitch, prefs.taperHands) { prefs.taperHands = it }
 
         val glowLabel = findViewById<TextView>(R.id.glowLabel)
         findViewById<Slider>(R.id.glowSlider).apply {
@@ -102,7 +95,6 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.clockBackdrop
             setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
         }
-        findViewById<Button>(R.id.clockStyle).setOnClickListener { pickClockStyle() }
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
@@ -121,31 +113,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.widgetButtonStyle).setOnClickListener {
             pickButtonStyle("ウィジェットのボタンのデザイン", prefs.widgetButtonStyle) { prefs.widgetButtonStyle = it }
         }
-
-        val speedLabel = findViewById<TextView>(R.id.speedLabel)
-        findViewById<Slider>(R.id.speedSlider).apply {
-            value = prefs.animSpeed.coerceIn(valueFrom, valueTo)
-            speedLabel.text = speedText(value)
-            setLabelFormatter { speedText(it) }
-            addOnChangeListener { _, v, _ -> speedLabel.text = speedText(v) }
-            // 動かしている間に何度も作り直さないよう、指を離したときに保存する
-            addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-                override fun onStartTrackingTouch(slider: Slider) {}
-                override fun onStopTrackingTouch(slider: Slider) {
-                    prefs.animSpeed = slider.value
-                    refresh()
-                }
-            })
-        }
-
-        // ラジオボタンはタップ時に処理する（時計との組み合わせもそろえるため）
-        findViewById<TextView>(R.id.modeEarth).setOnClickListener { setMode(Mode.EARTH) }
-        findViewById<TextView>(R.id.modeMoon).setOnClickListener { setMode(Mode.MOON) }
-        findViewById<TextView>(R.id.modeDotSeconds).setOnClickListener { setMode(Mode.DOT_SECONDS) }
-        findViewById<TextView>(R.id.modeLevelMeter).setOnClickListener { setMode(Mode.LEVEL_METER) }
-        findViewById<TextView>(R.id.modeDotWave).setOnClickListener { setMode(Mode.DOT_WAVE) }
-        findViewById<TextView>(R.id.modeSequencer).setOnClickListener { setMode(Mode.SEQUENCER) }
-        findViewById<TextView>(R.id.modeDotClock).setOnClickListener { setMode(Mode.DOT_CLOCK) }
     }
 
     override fun onResume() {
@@ -313,52 +280,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 背景を切り替える。背景と一体の時計があるので、時計と背景の組み合わせをそろえる。 */
-    private fun setMode(mode: Mode) {
-        if (mode == Mode.DOT_CLOCK) {
-            useDotClockBackground()
-            if (!prefs.clockStyle.integrated) prefs.clockStyle = ClockStyle.DIAL_SECTOR
-        } else {
-            prefs.mode = mode
-            if (prefs.clockStyle.integrated) {
-                prefs.clockStyle = ClockStyle.SIMPLE
-                toast("この時計は背景と一体のため、時計を「シンプル」に切り替えました")
-            }
-        }
-        refresh()
-    }
-
-    private fun useDotClockBackground() {
-        prefs.mode = Mode.DOT_CLOCK
-        // ドットで針を描くので、小さいと針が数個のドットにしかならない。最初は大きめにする
-        if (prefs.clockSize < 0.6f) prefs.clockSize = 0.8f
-    }
-
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     private fun glowText(v: Float) = "光の強さ（扇形・残像）: ${(v * 100).toInt()}%"
-
-    private fun speedText(v: Float) = "アニメーションの速さ: ${"%.2f".format(v).trimEnd('0').trimEnd('.')}倍"
-
-    private fun pickClockStyle() {
-        val styles = ClockStyle.entries
-        MaterialAlertDialogBuilder(this)
-            .setTitle("時計のデザイン")
-            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(prefs.clockStyle)) { dialog, i ->
-                prefs.clockStyle = styles[i]
-                // 背景と一体の時計を選んだら、背景もそろえる
-                if (styles[i].integrated && prefs.mode != Mode.DOT_CLOCK) {
-                    useDotClockBackground()
-                    toast("背景を「時計と一体」に切り替えました")
-                } else if (!styles[i].integrated && prefs.mode == Mode.DOT_CLOCK) {
-                    prefs.mode = Mode.DOT_WAVE
-                    toast("背景を「ドットウェーブ」に切り替えました")
-                }
-                refresh()
-                dialog.dismiss()
-            }
-            .show()
-    }
 
     private fun pickButtonStyle(title: String, current: LauncherStyle, save: (LauncherStyle) -> Unit) {
         val styles = LauncherStyle.entries
@@ -400,27 +324,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        modeGroup.check(
-            when (prefs.mode) {
-                Mode.EARTH -> R.id.modeEarth
-                Mode.MOON -> R.id.modeMoon
-                Mode.DOT_SECONDS -> R.id.modeDotSeconds
-                Mode.LEVEL_METER -> R.id.modeLevelMeter
-                Mode.DOT_WAVE -> R.id.modeDotWave
-                Mode.SEQUENCER -> R.id.modeSequencer
-                Mode.DOT_CLOCK -> R.id.modeDotClock
-            }
-        )
-        findViewById<Button>(R.id.clockStyle).text = "時計のデザイン: ${prefs.clockStyle.label}"
-        // 背景と一体の時計だけの設定は、選んでいるときだけ出す。針のドットの設定は光の時計では使わない
-        val style = prefs.clockStyle
-        findViewById<View>(R.id.dotOptions).visibility =
-            if (prefs.showClock && style.integrated) View.VISIBLE else View.GONE
-        val dotOnly = if (style.dial != null) View.VISIBLE else View.GONE
-        for (id in intArrayOf(R.id.taperSwitch, R.id.boldMinuteSwitch, R.id.minuteTipSwitch)) {
-            findViewById<View>(id).visibility = dotOnly
-        }
-
         findViewById<Button>(R.id.launcherStyle).apply {
             text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
             visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE

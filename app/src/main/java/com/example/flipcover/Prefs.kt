@@ -4,29 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.graphics.PointF
 
-enum class Mode { EARTH, MOON, DOT_SECONDS, LEVEL_METER, DOT_WAVE, SEQUENCER, DOT_CLOCK }
-
-/** [dial] があるものは背景のドットで、[light] のものは淡い光で、背景と一体に描く時計。 */
-enum class ClockStyle(val label: String, val dial: DotDialView.Pattern? = null, val light: Boolean = false) {
-    DIGITAL("デジタル"),
-    BOLD("ボールド（秒・日付つき）"),
-    SIMPLE("シンプル"),
-    MINIMAL("ミニマル"),
-    NUMBERS("数字"),
-    ROMAN("ローマ数字"),
-    NEON("ネオン"),
-    DIAL_CHANNEL("ドット列の針（背景と一体）", DotDialView.Pattern.CHANNEL),
-    DIAL_RADIAL("放射グリッド（背景と一体）", DotDialView.Pattern.RADIAL),
-    DIAL_TICKS("目盛りリング（背景と一体）", DotDialView.Pattern.TICKS),
-    DIAL_SECTOR("扇形（背景と一体）", DotDialView.Pattern.SECTOR),
-    DIAL_RADAR("レーダー（背景と一体）", DotDialView.Pattern.RADAR),
-    LIGHT_SECTOR("光の扇形（ドットなし・背景と一体）", light = true),
-    ;
-
-    /** 背景と一体に描く時計か。 */
-    val integrated get() = dial != null || light
-}
-
 /** 設定値。アプリ画面とサービスの両方から読み書きする。 */
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -35,46 +12,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("enabled", true)
         set(v) = sp.edit().putBoolean("enabled", v).apply()
 
-    var mode: Mode
-        get() = runCatching { Mode.valueOf(sp.getString("mode", null)!!) }.getOrDefault(Mode.DOT_WAVE)
-        set(v) = sp.edit().putString("mode", v.name).apply()
-
     var showClock: Boolean
         get() = sp.getBoolean("clock", true)
         set(v) = sp.edit().putBoolean("clock", v).apply()
 
-    var clockStyle: ClockStyle
-        // 以前の「アナログ時計にする」設定を引き継ぐ
-        get() = runCatching { ClockStyle.valueOf(sp.getString("clockStyle", null)!!) }
-            .getOrElse { if (sp.getBoolean("analog", false)) ClockStyle.SIMPLE else ClockStyle.DIGITAL }
-        set(v) = sp.edit().putString("clockStyle", v.name).apply()
-
-    /** アニメーションの速さの倍率（1 が標準）。 */
-    var animSpeed: Float
-        get() = sp.getFloat("animSpeed", 1f)
-        set(v) = sp.edit().putFloat("animSpeed", v).apply()
-
-    /** 分針を太く長くする（ドット系の時計）。 */
-    var boldMinute: Boolean
-        get() = sp.getBoolean("boldMinute", false)
-        set(v) = sp.edit().putBoolean("boldMinute", v).apply()
-
-    /** 分針の先に丸、外周に印を付ける（ドット系の時計）。 */
-    var minuteTip: Boolean
-        get() = sp.getBoolean("minuteTip", false)
-        set(v) = sp.edit().putBoolean("minuteTip", v).apply()
-
-    /** アナログ時計とは別に、秒つきのデジタル時計も表示する。 */
+    /** 光の時計とは別に、秒つきのデジタル時計も表示する。 */
     var showDigital: Boolean
         get() = sp.getBoolean("showDigital", false)
         set(v) = sp.edit().putBoolean("showDigital", v).apply()
 
-    /** ドット系の時計で、針のドットを先端ほど小さくする。 */
-    var taperHands: Boolean
-        get() = sp.getBoolean("taperHands", true)
-        set(v) = sp.edit().putBoolean("taperHands", v).apply()
-
-    /** ドット系の時計の、扇形や残像の光の強さ（0〜1）。 */
+    /** 光の時計の、扇形や残像の光の強さ（0〜1）。 */
     var glow: Float
         get() = sp.getFloat("glow", 0.5f)
         set(v) = sp.edit().putFloat("glow", v).apply()
@@ -92,7 +39,7 @@ class Prefs(context: Context) {
         get() = sp.getFloat("clockY", 0.45f)
         set(v) = sp.edit().putFloat("clockY", v).apply()
     var clockSize: Float
-        get() = sp.getFloat("clockSize", 0.35f)
+        get() = sp.getFloat("clockSize", 0.8f)
         set(v) = sp.edit().putFloat("clockSize", v).apply()
     /** アプリをボタンにまとめ、タップで展開する。オフならアイコンを常に表示する。 */
     var useLauncher: Boolean

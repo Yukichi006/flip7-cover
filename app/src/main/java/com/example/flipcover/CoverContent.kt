@@ -10,24 +10,18 @@ import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.util.Size
 import android.util.SizeF
-import android.util.TypedValue
 import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.TextClock
-import java.util.Calendar
-import kotlin.math.cos
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
  * カバー画面とプレビューで共通に使う表示内容を組み立てる。
@@ -70,47 +64,16 @@ object CoverContent {
         val w = size.width
         val h = size.height
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
-        val speed = prefs.animSpeed
-        // ドット系の時計は、背景のドットで描く（背景の選択より優先する）
-        val integrated = prefs.mode == Mode.DOT_CLOCK || prefs.clockStyle.integrated
-        val content: View = if (integrated) dotClock(context, prefs, size) else when (prefs.mode) {
-            Mode.EARTH -> SpaceView(context, SpaceView.Planet.EARTH, speed)
-            Mode.MOON -> SpaceView(context, SpaceView.Planet.MOON, speed)
-            // ドット秒は時計そのものなので速さは変えない
-            Mode.DOT_SECONDS -> DotSecondsView(context)
-            Mode.LEVEL_METER -> LevelMeterView(context, speed)
-            Mode.DOT_WAVE -> DotWaveView(context, speed)
-            Mode.SEQUENCER -> SequencerView(context, speed)
-            Mode.DOT_CLOCK -> dotClock(context, prefs, size)
-        }
-        root.addView(content, FrameLayout.LayoutParams(-1, -1))
+        root.addView(lightDial(context, prefs, size), FrameLayout.LayoutParams(-1, -1))
 
-        if (prefs.showClock && integrated) {
+        if (prefs.showClock) {
             // 時計は背景が描くので、ここにはドラッグで動かすための透明な部品だけ置く
             val box = (prefs.clockSize * w).toInt()
             val handle = ClockHandle(context, editing).apply { tag = TAG_CLOCK }
             root.addView(handle, place(size, prefs.clockX, prefs.clockY, box, box))
-        } else if (prefs.showClock) {
-            val box = (prefs.clockSize * w).toInt()
-            val style = prefs.clockStyle
-            val (clock, boxH) = if (style == ClockStyle.BOLD) {
-                BoldClockView(context) to (box * 0.6f).toInt()
-            } else if (style != ClockStyle.DIGITAL) {
-                AnalogClockView(context, style) to box
-            } else {
-                TextClock(context).apply {
-                    format12Hour = "H:mm"
-                    format24Hour = "H:mm"
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_PX, box * 0.3f)
-                    setShadowLayer(12f, 0f, 0f, Color.BLACK)
-                } to box / 2
-            }
-            addWithBackdrop(context, root, size, clock, box, boxH, TAG_CLOCK, prefs.clockX, prefs.clockY, prefs.clockBackdrop)
         }
 
-        // アナログでおおよその時刻、こちらで秒まで確かめられるよう、別の部品として置く
+        // 光の時計でおおよその時刻、こちらで秒まで確かめられるよう、別の部品として置く
         if (prefs.showDigital) {
             val dw = (prefs.digitalSize * w).toInt()
             addWithBackdrop(context, root, size, SecondsClockView(context), dw, (dw * 0.3f).toInt(),
@@ -236,18 +199,12 @@ object CoverContent {
         return Widgets(area, frames, aw, ah)
     }
 
-    /** 背景と一体のドット時計。時計の位置はほかの部品と同じく画面内に収めた値を使う。 */
-    private fun dotClock(context: Context, prefs: Prefs, size: Size): View {
+    /** 背景と一体の光の時計。時計の位置はほかの部品と同じく画面内に収めた値を使う。 */
+    private fun lightDial(context: Context, prefs: Prefs, size: Size): View {
         val box = (prefs.clockSize * size.width).toInt()
         val lp = place(size, prefs.clockX, prefs.clockY, box, box)
         val r = if (prefs.showClock) box / 2f else 0f
-        val cx = lp.leftMargin + box / 2f
-        val cy = lp.topMargin + box / 2f
-        if (prefs.clockStyle.light) return LightDialView(context, cx, cy, r, prefs.glow)
-        // 背景だけドット時計にして時計が別のデザインのときは、扇形にする
-        val pattern = prefs.clockStyle.dial ?: DotDialView.Pattern.SECTOR
-        return DotDialView(context, cx, cy, r, pattern, prefs.animSpeed,
-            prefs.taperHands, prefs.glow, prefs.boldMinute, prefs.minuteTip)
+        return LightDialView(context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r, prefs.glow)
     }
 
     /** ぼかした背景の分だけ枠を広げて [view] をその中央に置き、ドラッグ用の [tag] を付けて配置する。 */
@@ -393,134 +350,5 @@ class SoftBackdrop(context: Context) : View(context) {
         canvas.scale(1f, height / width.toFloat(), width / 2f, height / 2f)
         canvas.drawCircle(width / 2f, height / 2f, width / 2f, paint)
         canvas.restore()
-    }
-}
-
-/** 文字盤と針を描くアナログ時計。[style] でデザインを切り替える。 */
-class AnalogClockView(context: Context, private val style: ClockStyle) : View(context) {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
-
-    override fun onDraw(canvas: Canvas) {
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = min(cx, cy) * 0.92f
-
-        val now = Calendar.getInstance()
-        val sec = now.get(Calendar.SECOND) + now.get(Calendar.MILLISECOND) / 1000f
-        val minute = now.get(Calendar.MINUTE) + sec / 60f
-        val hour = now.get(Calendar.HOUR) + minute / 60f
-
-        when (style) {
-            ClockStyle.MINIMAL -> {
-                shadow(r * 0.03f, Color.BLACK)
-                paint.style = Paint.Style.FILL
-                for (i in 0 until 4) dot(canvas, cx, cy, i * 90f, r * 0.92f, r * 0.04f, Color.WHITE)
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.035f, r * 0.025f, Color.WHITE, 0xFFFF9F43.toInt())
-            }
-            ClockStyle.NUMBERS -> {
-                shadow(r * 0.03f, Color.BLACK)
-                ticks(canvas, cx, cy, r, major = 0.9f, minor = 0.95f, majorW = 0.03f, minorW = 0.012f, color = Color.WHITE)
-                numerals(canvas, cx, cy, r * 0.72f, r * 0.2f, Color.WHITE, Typeface.DEFAULT_BOLD, ARABIC)
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.06f, r * 0.04f, Color.WHITE, 0xFFFF5252.toInt())
-            }
-            ClockStyle.ROMAN -> {
-                val gold = 0xFFE9C46A.toInt()
-                shadow(r * 0.03f, Color.BLACK)
-                ring(canvas, cx, cy, r, r * 0.025f, gold)
-                ring(canvas, cx, cy, r * 0.9f, r * 0.008f, gold)
-                ticks(canvas, cx, cy, r * 0.9f, major = 0.92f, minor = 0.96f, majorW = 0.02f, minorW = 0.008f, color = gold)
-                numerals(canvas, cx, cy, r * 0.68f, r * 0.17f, gold, Typeface.SERIF, ROMAN_NUMERALS)
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.045f, r * 0.03f, gold, Color.WHITE)
-            }
-            ClockStyle.NEON -> {
-                val cyan = 0xFF22D3EE.toInt()
-                shadow(r * 0.12f, cyan)
-                ring(canvas, cx, cy, r, r * 0.03f, cyan)
-                for (i in 0 until 12) {
-                    line(canvas, cx, cy, i * 30f, r * 0.78f, r * 0.88f, r * 0.03f, cyan)
-                }
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.05f, r * 0.035f, cyan, 0xFFF472B6.toInt(), glow = r * 0.12f)
-            }
-            else -> {
-                shadow(r * 0.03f, Color.BLACK)
-                ticks(canvas, cx, cy, r, major = 0.82f, minor = 0.9f, majorW = 0.045f, minorW = 0.018f, color = Color.WHITE)
-                hands(canvas, cx, cy, r, hour, minute, sec, r * 0.07f, r * 0.05f, Color.WHITE, 0xFFF472B6.toInt())
-            }
-        }
-
-        // 秒針が動いて見える程度に、描き直しは控えめにする
-        postInvalidateDelayed(250)
-    }
-
-    private fun shadow(radius: Float, color: Int) {
-        if (radius > 0f) paint.setShadowLayer(radius, 0f, 0f, color) else paint.clearShadowLayer()
-        if (radius > 0f) text.setShadowLayer(radius, 0f, 0f, color) else text.clearShadowLayer()
-    }
-
-    private fun hands(
-        canvas: Canvas, cx: Float, cy: Float, r: Float,
-        hour: Float, minute: Float, sec: Float,
-        hourW: Float, minW: Float, color: Int, secColor: Int, glow: Float = 0f,
-    ) {
-        line(canvas, cx, cy, hour * 30f, 0f, r * 0.5f, hourW, color)
-        line(canvas, cx, cy, minute * 6f, 0f, r * 0.75f, minW, color)
-        if (glow > 0f) paint.setShadowLayer(glow, 0f, 0f, secColor)
-        line(canvas, cx, cy, sec * 6f, -r * 0.12f, r * 0.85f, r * 0.018f, secColor)
-        paint.style = Paint.Style.FILL
-        paint.color = color
-        canvas.drawCircle(cx, cy, hourW * 0.8f, paint)
-    }
-
-    private fun ticks(
-        canvas: Canvas, cx: Float, cy: Float, r: Float,
-        major: Float, minor: Float, majorW: Float, minorW: Float, color: Int,
-    ) {
-        for (i in 0 until 60) {
-            val isMajor = i % 5 == 0
-            line(canvas, cx, cy, i * 6f, r * (if (isMajor) major else minor), r,
-                r * (if (isMajor) majorW else minorW), color)
-        }
-    }
-
-    private fun numerals(canvas: Canvas, cx: Float, cy: Float, radius: Float, size: Float, color: Int, face: Typeface, labels: Array<String>) {
-        text.color = color
-        text.textSize = size
-        text.typeface = face
-        val baseline = -(text.ascent() + text.descent()) / 2
-        for (i in 1..12) {
-            val a = Math.toRadians(i * 30.0)
-            canvas.drawText(labels[i - 1], cx + radius * sin(a).toFloat(), cy - radius * cos(a).toFloat() + baseline, text)
-        }
-    }
-
-    private fun ring(canvas: Canvas, cx: Float, cy: Float, radius: Float, w: Float, color: Int) {
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = w
-        paint.color = color
-        canvas.drawCircle(cx, cy, radius, paint)
-    }
-
-    private fun dot(canvas: Canvas, cx: Float, cy: Float, deg: Float, dist: Float, radius: Float, color: Int) {
-        val a = Math.toRadians(deg.toDouble())
-        paint.style = Paint.Style.FILL
-        paint.color = color
-        canvas.drawCircle(cx + dist * sin(a).toFloat(), cy - dist * cos(a).toFloat(), radius, paint)
-    }
-
-    /** 中心から角度 [deg] の方向へ、[from] から [to] の距離まで線を引く。 */
-    private fun line(canvas: Canvas, cx: Float, cy: Float, deg: Float, from: Float, to: Float, w: Float, color: Int) {
-        val a = Math.toRadians(deg.toDouble())
-        val sx = sin(a).toFloat()
-        val sy = -cos(a).toFloat()
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = w
-        paint.color = color
-        canvas.drawLine(cx + from * sx, cy + from * sy, cx + to * sx, cy + to * sy, paint)
-    }
-
-    private companion object {
-        val ARABIC = Array(12) { (it + 1).toString() }
-        val ROMAN_NUMERALS = arrayOf("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
     }
 }
