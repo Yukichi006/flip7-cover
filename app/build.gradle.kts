@@ -13,8 +13,9 @@ android {
         targetSdk = 35
         // CI の実行番号を使い、更新のたびに大きくなるようにする
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toInt() ?: 1
-        // Releases のタグ（v1.0.<実行番号>）と揃え、Obtainium が新旧を比べられるようにする
-        versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        // 表示用のバージョンは VERSION ファイル（メジャー.マイナー.パッチ）。Releases のタグ（v<バージョン>）と揃え、
+        // Obtainium が新旧を比べられるようにする
+        versionName = rootProject.file("VERSION").readText().trim()
     }
 
     signingConfigs {

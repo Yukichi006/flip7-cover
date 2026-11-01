@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       # 外部 Action はタグではなくコミット SHA で固定（タグの差し替え対策）
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,6 +34,10 @@ jobs:
           else
             echo "::warning::FLIPCOVER_KEYSTORE_B64 が未設定のため、毎回異なる鍵で署名されます（上書き更新できません）"
           fi
+      # 公開するバージョン（VERSION ファイル）を、リリースのジョブに渡す
+      - name: バージョンを読む
+        id: version
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
       - run: chmod +x gradlew && ./gradlew assembleDebug
         env:
           FLIPCOVER_KEYSTORE_PASSWORD: ${{ secrets.FLIPCOVER_KEYSTORE_PASSWORD }}
@@ -57,8 +63,13 @@ jobs:
       - name: Releases に APK を公開
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v1.0.${{ github.run_number }}
+          TAG: v${{ needs.build.outputs.version }}
         run: |
+          # 同じバージョンを二度公開しないよう、VERSION を上げ忘れていたら止める
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::$TAG は公開済みです。VERSION ファイルのバージョンを上げてください"
+            exit 1
+          fi
           apk="flipcover-$TAG.apk"
           mv app-debug.apk "$apk"
           gh release create "$TAG" "$apk" \
