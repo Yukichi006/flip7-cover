@@ -5,7 +5,9 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +23,9 @@ import java.util.UUID
 object BleBattery {
     private val SERVICE: UUID = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
     private val LEVEL: UUID = UUID.fromString("00002a19-0000-1000-8000-00805f9b34fb")
+
+    /** 通知を受け取るかどうかを機器に伝える設定の場所。 */
+    private val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
     /** 読み直すまでの間隔。腕時計などの電池を減らさないよう長めにする。 */
     private const val REFRESH_MS = 10 * 60_000L
@@ -99,13 +104,32 @@ object BleBattery {
             }
 
             override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
-                val level = value.firstOrNull()?.toInt()?.and(0xFF)
-                if (status == BluetoothGatt.GATT_SUCCESS && level != null && level in 0..100) {
+                val level = parse(value)
+                if (status == BluetoothGatt.GATT_SUCCESS && level != null) {
                     main.post { readings[device.address] = Reading(level, SystemClock.elapsedRealtime()) }
                     end("読めました: $level%")
-                } else {
-                    end("読み取りに失敗しました（status=$status）")
+                    return
                 }
+                // スマートリングなど、読んでも値を返さず、変わったときの通知でだけ残量を送る機器もある。
+                // その場合は通知を受け取るように切り替えて待つ
+                val raw = hex(value)
+                if (subscribe(g, c)) setStatus(device, "読んだ値が使えなかったため（status=$status、値: $raw）通知を待っています…")
+                else end("読み取りに失敗しました（status=$status、値: $raw）")
+            }
+
+            override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
+                if (c.uuid != LEVEL) return
+                val level = parse(value)
+                if (level != null) {
+                    main.post { readings[device.address] = Reading(level, SystemClock.elapsedRealtime()) }
+                    end("通知で読めました: $level%")
+                } else {
+                    setStatus(device, "通知の値が使えませんでした（値: ${hex(value)}）。次の通知を待っています…")
+                }
+            }
+
+            override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
+                if (d.uuid == CCCD && status != BluetoothGatt.GATT_SUCCESS) end("通知を受け取る設定に失敗しました（status=$status）")
             }
         }
         gatt = runCatching {
@@ -116,6 +140,19 @@ object BleBattery {
             return
         }
         main.postDelayed(timeout, TIMEOUT_MS)
+    }
+
+    /** 電池残量の値（先頭の 1 バイトが 0〜100 の %）。使えない値なら null。 */
+    private fun parse(value: ByteArray): Int? = value.firstOrNull()?.toInt()?.and(0xFF)?.takeIf { it in 0..100 }
+
+    /** 診断用に、受け取った値をそのまま 16 進で並べる。 */
+    private fun hex(value: ByteArray) = value.joinToString(" ") { "%02x".format(it) }.ifEmpty { "空" }
+
+    /** 残量が変わったときに通知を送ってもらうよう、機器に頼む。頼めなければ false。 */
+    private fun subscribe(g: BluetoothGatt, c: BluetoothGattCharacteristic): Boolean {
+        val cccd = c.getDescriptor(CCCD) ?: return false
+        if (!g.setCharacteristicNotification(c, true)) return false
+        return g.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS
     }
 
     /** 前に読めた機器が切断されたら、古い残量を出し続けないよう忘れる。 */
