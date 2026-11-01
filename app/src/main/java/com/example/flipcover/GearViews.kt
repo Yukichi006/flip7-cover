@@ -35,29 +35,32 @@ class ClockHandle(context: Context, private val visible: Boolean) : View(context
     }
 }
 
-/** 秒まで出すデジタル時計。光の時計と並べて使う。秒はオレンジで目に入りやすくする。 */
+/**
+ * 秒まで出すデジタル時計。光の時計と並べて使う。
+ * 光の時計の針と同じ色にそろえ、時はオレンジ、分は白、秒は黄色で描く。
+ */
 class SecondsClockView(context: Context) : View(context) {
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create("sans-serif", Typeface.BOLD)
         textAlign = Paint.Align.LEFT
+        // 数字の幅で文字が揺れないよう、等幅の数字で描く
+        fontFeatureSettings = "tnum"
     }
-    private val hm = SimpleDateFormat("HH:mm", Locale.US)
+    private val hh = SimpleDateFormat("HH", Locale.US)
+    private val mm = SimpleDateFormat(":mm", Locale.US)
     private val ss = SimpleDateFormat(":ss", Locale.US)
 
     override fun onDraw(canvas: Canvas) {
         val now = Calendar.getInstance().time
         text.textSize = height * 0.8f
-        val main = hm.format(now)
-        val sec = ss.format(now)
-        // 数字の幅で文字が揺れないよう、等幅の数字で描く
-        text.fontFeatureSettings = "tnum"
-        val total = text.measureText(main) + text.measureText(sec)
-        val x = (width - total) / 2
+        val parts = listOf(hh.format(now) to Gear.ORANGE, mm.format(now) to Gear.ON, ss.format(now) to Gear.YELLOW)
+        var x = (width - parts.sumOf { text.measureText(it.first).toDouble() }.toFloat()) / 2
         val baseline = height / 2f - (text.ascent() + text.descent()) / 2
-        text.color = Gear.ON
-        canvas.drawText(main, x, baseline, text)
-        text.color = Gear.ORANGE
-        canvas.drawText(sec, x + text.measureText(main), baseline, text)
+        for ((part, color) in parts) {
+            text.color = color
+            canvas.drawText(part, x, baseline, text)
+            x += text.measureText(part)
+        }
         postInvalidateDelayed(1000 - System.currentTimeMillis() % 1000)
     }
 }
