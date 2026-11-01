@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.res.Resources
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
@@ -19,6 +20,7 @@ import android.util.TypedValue
 import android.view.Display
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextClock
@@ -213,6 +215,14 @@ object CoverContent {
             }
             view.scaleX = scale
             view.scaleY = scale
+            // ホーム画面と同じように、ウィジェットの角を丸く切り抜く
+            val radius = runCatching {
+                widgetContext.resources.getDimension(android.R.dimen.system_app_widget_background_radius)
+            }.getOrDefault(16 * density)
+            view.outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(v: View, outline: Outline) = outline.setRoundRect(0, 0, v.width, v.height, radius)
+            }
+            view.clipToOutline = true
             WidgetFrame(context, editing, onTouch) { onTap?.invoke(info.provider.packageName) }.also { frame ->
                 frame.addView(view, FrameLayout.LayoutParams(lw.toInt(), lh.toInt(), Gravity.CENTER))
                 area.addView(frame, FrameLayout.LayoutParams(cellW, cellH).apply {
