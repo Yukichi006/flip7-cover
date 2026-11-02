@@ -76,8 +76,10 @@ object CoverContent {
         // 光の時計でおおよその時刻、こちらで秒まで確かめられるよう、別の部品として置く
         if (prefs.showDigital) {
             val dw = (prefs.digitalSize * w).toInt()
-            addWithBackdrop(context, root, size, SecondsClockView(context), dw, (dw * 0.3f).toInt(),
-                TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop)
+            // ステッチの見た目では、縫った数字にし、後ろのぼかしは敷かない（布地が見えるように）
+            val digital = if (prefs.stitch) StitchSecondsClockView(context) else SecondsClockView(context)
+            addWithBackdrop(context, root, size, digital, dw, (dw * 0.3f).toInt(),
+                TAG_DIGITAL, prefs.digitalX, prefs.digitalY, prefs.clockBackdrop && !prefs.stitch)
         }
 
         // 電池残量は常に出しておく情報なので、ボタンで開く部品より先（下）に置く
@@ -207,6 +209,7 @@ object CoverContent {
         val box = (prefs.clockSize * size.width).toInt()
         val lp = place(size, prefs.clockX, prefs.clockY, box, box)
         val r = if (prefs.showClock) box / 2f else 0f
+        if (prefs.stitch) return StitchDialView(context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r)
         return LightDialView(context, lp.leftMargin + box / 2f, lp.topMargin + box / 2f, r, prefs.glow)
     }
 

@@ -21,6 +21,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("showDigital", false)
         set(v) = sp.edit().putBoolean("showDigital", v).apply()
 
+    /** 見た目を「ステッチ」（黒い布地に白い糸の縫い目。ホーム画面の FlipHome と同じ）にする。false なら光の時計。 */
+    var stitch: Boolean
+        get() = sp.getBoolean("stitch", false)
+        set(v) = sp.edit().putBoolean("stitch", v).apply()
+
     /** 光の時計の、扇形や残像の光の強さ（0〜1）。 */
     var glow: Float
         get() = sp.getFloat("glow", 0.5f)

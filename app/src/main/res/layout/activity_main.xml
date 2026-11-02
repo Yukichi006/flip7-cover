@@ -191,6 +191,12 @@
                         android:text="時計" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/stitchSwitch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="ステッチの見た目（黒い布地に白い糸）" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/clockSwitch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

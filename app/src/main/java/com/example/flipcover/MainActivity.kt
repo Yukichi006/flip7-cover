@@ -76,6 +76,14 @@ class MainActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
         }
         bindSwitch(R.id.digitalSwitch, prefs.showDigital) { prefs.showDigital = it }
+        findViewById<MaterialSwitch>(R.id.stitchSwitch).apply {
+            isChecked = prefs.stitch
+            setOnCheckedChangeListener { _, v ->
+                prefs.stitch = v
+                updateStyleControls()
+                refresh()
+            }
+        }
 
         val glowLabel = findViewById<TextView>(R.id.glowLabel)
         findViewById<Slider>(R.id.glowSlider).apply {
@@ -95,6 +103,7 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.clockBackdrop
             setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
         }
+        updateStyleControls()
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
@@ -283,6 +292,14 @@ class MainActivity : AppCompatActivity() {
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     private fun glowText(v: Float) = "光の強さ（扇形・残像）: ${(v * 100).toInt()}%"
+
+    /** ステッチの見た目では使わない設定（光の強さ・ぼかし）を隠す。 */
+    private fun updateStyleControls() {
+        val light = if (prefs.stitch) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.glowLabel).visibility = light
+        findViewById<View>(R.id.glowSlider).visibility = light
+        findViewById<View>(R.id.backdropSwitch).visibility = light
+    }
 
     private fun pickButtonStyle(title: String, current: LauncherStyle, save: (LauncherStyle) -> Unit) {
         val styles = LauncherStyle.entries
