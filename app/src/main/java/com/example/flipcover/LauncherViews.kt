@@ -27,7 +27,13 @@ enum class LauncherStyle(val label: String) {
  * タップするとアプリアイコンが展開するボタン。
  * [openness] が 0 で閉じた見た目、1 で開いた見た目（オレンジに光る、× に回るなど）。
  */
-class LauncherButton(context: Context, private val style: LauncherStyle) : View(context) {
+class LauncherButton(
+    context: Context,
+    private val style: LauncherStyle,
+    /** ステッチの見た目にする（アプリは巾着、ウィジェット（[widget]）はポケットの形）。 */
+    private val stitch: Boolean = false,
+    private val widget: Boolean = false,
+) : View(context) {
     var openness = 0f
         private set(v) {
             field = v
@@ -58,6 +64,10 @@ class LauncherButton(context: Context, private val style: LauncherStyle) : View(
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (stitch) {
+            if (widget) StitchShapes.pocket(canvas, this, openness) else StitchShapes.pouch(canvas, this, openness)
+            return
+        }
         val cx = width / 2f
         val cy = height / 2f
         val r = min(cx, cy) * 0.92f

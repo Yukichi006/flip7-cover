@@ -28,7 +28,7 @@ import kotlin.math.sin
  * @param interactive false ならタッチを受けない（プレビューでドラッグ・ピンチできるようにする）
  */
 @SuppressLint("ClickableViewAccessibility")
-class TorchSwitch(context: Context, private val interactive: Boolean) : View(context) {
+class TorchSwitch(context: Context, private val interactive: Boolean, private val stitch: Boolean = false) : View(context) {
     private val cameraManager = context.getSystemService(CameraManager::class.java)
     private val cameraId: String? = runCatching {
         cameraManager.cameraIdList.firstOrNull { id ->
@@ -145,6 +145,7 @@ class TorchSwitch(context: Context, private val interactive: Boolean) : View(con
     private fun travel() = width - height.toFloat()
 
     override fun onDraw(canvas: Canvas) {
+        if (stitch) return drawStitch(canvas)
         val h = height.toFloat()
         val r = h / 2f
         val inset = h * 0.08f
@@ -182,6 +183,54 @@ class TorchSwitch(context: Context, private val interactive: Boolean) : View(con
         fill.color = if (available) ColorUtils.blendARGB(KNOB_COLOR, Gear.YELLOW, glow) else Gear.OFF
         canvas.drawCircle(kx, cy, kr, fill)
         bulb(canvas, kx, cy, kr, ColorUtils.blendARGB(Gear.ON, Gear.BG, if (available) glow else 0.6f))
+    }
+
+    /**
+     * ステッチの見た目：フェルトの帯にステッチの縁取り、つまみは縫い付けボタン。
+     * 点いていくほど、つまみが通った所を白い糸で埋め（サテン刺繍）、点くとボタンが生成り色になる。
+     */
+    private fun drawStitch(canvas: Canvas) {
+        val d = resources.displayMetrics.density
+        val h = height.toFloat()
+        val r = h / 2f
+        val kr = r - h * 0.1f
+        val kx = r + knob * travel()
+        val cy = r
+        val lit = if (available) knob else 0f
+        rect.set(0f, 0f, width.toFloat(), h)
+        StitchShapes.patch(canvas, this, rect, r)
+        if (lit > 0f) {
+            rect.set(h * 0.18f, cy - h * 0.12f, kx, cy + h * 0.12f)
+            fill.shader = null
+            fill.color = ColorUtils.setAlphaComponent(Stitch.THREAD, (230 * lit).toInt())
+            canvas.drawRoundRect(rect, h * 0.12f, h * 0.12f, fill)
+        }
+        if (available) {
+            // スワイプする向きの矢印（縫い目）
+            val dir = if (on) -1f else 1f
+            val size = h * 0.1f
+            val start = kx + dir * (kr + h * 0.3f)
+            val seam = Stitch.paint((h * 0.03f).coerceAtLeast(1f * d), h * 0.06f, h * 0.04f, Stitch.THREAD_DIM)
+            for (i in 0 until 3) {
+                val x = start + dir * i * h * 0.22f
+                if (x < h * 0.3f || x > width - h * 0.3f) continue
+                canvas.drawLine(x - dir * size * 0.5f, cy - size, x + dir * size * 0.5f, cy, seam)
+                canvas.drawLine(x + dir * size * 0.5f, cy, x - dir * size * 0.5f, cy + size, seam)
+            }
+        }
+        // つまみ：縫い付けボタン（点くと生成り色）
+        fill.color = 0xFF050505.toInt()
+        val btn = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ColorUtils.blendARGB(Stitch.FELT, Stitch.THREAD, lit)
+            setShadowLayer(4f * d, 0f, 2f * d, 0xC0000000.toInt())
+        }
+        canvas.drawCircle(kx, cy, kr, btn)
+        canvas.drawCircle(kx, cy, kr * 0.78f, Stitch.paint((kr * 0.05f).coerceAtLeast(0.9f * d), kr * 0.14f, kr * 0.1f,
+            if (lit > 0.5f) 0x99000000.toInt() else Stitch.THREAD))
+        val holeColor = if (lit > 0.5f) 0xFF2A2A28.toInt() else 0xFF050505.toInt()
+        fill.color = holeColor
+        val k = kr * 0.22f
+        for ((x, y) in listOf(-k to -k, k to -k, k to k, -k to k)) canvas.drawCircle(kx + x, cy + y, kr * 0.09f, fill)
     }
 
     /** つまみの進む側に、3 つ並んだ矢印を薄く描く。[dir] は 1 で右向き、-1 で左向き。 */

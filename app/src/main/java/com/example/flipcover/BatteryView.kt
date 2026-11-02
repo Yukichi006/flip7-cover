@@ -31,7 +31,7 @@ import androidx.core.content.IntentCompat
  * 読むには「付近のデバイス」の許可が要り、許可がなければ本体だけを表示する。
  */
 @SuppressLint("ViewConstructor")
-class BatteryView(context: Context) : View(context) {
+class BatteryView(context: Context, private val stitch: Boolean = false) : View(context) {
     private class Row(val name: String, val level: Int, val charging: Boolean, val kind: DeviceKind)
 
     private var rows = emptyList<Row>()
@@ -55,6 +55,8 @@ class BatteryView(context: Context) : View(context) {
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG)
     private val icon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Gear.GRAY }
     private val rect = RectF()
+    private val trackStitch by lazy { Stitch.paint(0.9f * resources.displayMetrics.density, 2.6f * resources.displayMetrics.density, 2f * resources.displayMetrics.density, Stitch.THREAD_DIM) }
+    private val satinLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x30000000; strokeWidth = 0.8f * context.resources.displayMetrics.density }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
@@ -157,10 +159,18 @@ class BatteryView(context: Context) : View(context) {
         val iconS = rowH * 0.5f
         val barLeft = iconS + gap
         icon.setShadowLayer(rowH * 0.12f, 0f, 0f, SHADOW)
+        // ステッチの見た目では、糸の色の文字にする
+        label.color = if (stitch) Stitch.THREAD_DIM else Gear.GRAY
+        percent.color = if (stitch) Stitch.THREAD else Gear.ON
+        icon.color = if (stitch) Stitch.THREAD_DIM else Gear.GRAY
 
         rows.forEachIndexed { i, row ->
             val top = i * rowH
-            val name = if (row.charging) "${row.name}・充電中" else row.name
+            val name = when {
+                row.charging -> "${row.name}・充電中"
+                stitch && row.level <= LOW -> "${row.name}・残りわずか"
+                else -> row.name
+            }
             canvas.drawText(TextUtils.ellipsize(name, label, w - barLeft, TextUtils.TruncateAt.END).toString(),
                 w, top + label.textSize, label)
 
@@ -172,6 +182,27 @@ class BatteryView(context: Context) : View(context) {
             val cy = baseline - percent.textSize * 0.36f
             drawDeviceIcon(canvas, row.kind, iconS / 2, (top + label.textSize * 0.3f + cy) / 2, iconS, icon)
             val right = w - pctW - gap
+            if (stitch) {
+                // ステッチの見た目：細いステッチの枠に、残っている分をサテン刺繍のように糸で埋めた棒
+                val bh = segH * 1.25f
+                rect.set(barLeft, cy - bh / 2, right, cy + bh / 2)
+                canvas.drawRoundRect(rect, bh / 2, bh / 2, trackStitch)
+                val fillW = ((right - barLeft) * row.level / 100f).coerceAtLeast(if (row.level > 0) bh else 0f)
+                if (fillW > 0f) {
+                    rect.set(barLeft, cy - bh / 2, barLeft + fillW, cy + bh / 2)
+                    bar.color = Stitch.THREAD
+                    canvas.drawRoundRect(rect, bh / 2, bh / 2, bar)
+                    canvas.save()
+                    canvas.clipRect(rect)
+                    var x = rect.left - bh
+                    while (x < rect.right) {
+                        canvas.drawLine(x, rect.bottom, x + bh, rect.top, satinLine)
+                        x += bh * 0.5f
+                    }
+                    canvas.restore()
+                }
+                return@forEachIndexed
+            }
             val cellGap = segH * 0.45f
             val cellW = (right - barLeft - cellGap * (SEGMENTS - 1)) / SEGMENTS
             // 1% でも残っていれば 1 つは点ける

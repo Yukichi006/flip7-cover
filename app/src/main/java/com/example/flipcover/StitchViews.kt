@@ -211,3 +211,130 @@ class StitchSecondsClockView(context: Context) : View(context) {
         postInvalidateDelayed(1000 - System.currentTimeMillis() % 1000)
     }
 }
+
+/**
+ * ステッチの見た目の部品を描く道具：巾着（アプリのボタン）、ポケット（ウィジェットのボタン）、ワッペンの土台。
+ */
+object StitchShapes {
+    /** フェルトのワッペン（角丸）に、縁から少し内側のステッチ。 */
+    fun patch(canvas: Canvas, view: View, rect: RectF, radius: Float) {
+        val d = view.resources.displayMetrics.density
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Stitch.FELT; setShadowLayer(6f * d, 0f, 2.5f * d, 0xC0000000.toInt()) }
+        canvas.drawRoundRect(rect, radius, radius, shadow)
+        canvas.drawRoundRect(rect, radius, radius, Stitch.fabric(Stitch.FELT, d))
+        val inner = RectF(rect).apply { inset(rect.width() * 0.07f, rect.height() * 0.07f) }
+        val w = (rect.width() * 0.012f).coerceIn(0.9f * d, 1.4f * d)
+        canvas.drawRoundRect(inner, radius * 0.7f, radius * 0.7f, Stitch.paint(w, w * 3f, w * 2.1f))
+    }
+
+    /** 巾着袋。[openness] が 1 に近いほど紐がゆるみ、口が開く。 */
+    fun pouch(canvas: Canvas, view: View, openness: Float) {
+        val d = view.resources.displayMetrics.density
+        val s = min(view.width, view.height) * 0.92f
+        val cx = view.width / 2f
+        val top = (view.height - s) / 2f
+        val felt = Stitch.fabric(Stitch.FELT, d)
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Stitch.FELT; setShadowLayer(6f * d, 0f, 3f * d, 0xC0000000.toInt()) }
+        val bodyW = s * 0.86f
+        val neckY = top + s * 0.3f
+        val neckW = s * (0.2f + 0.26f * openness)
+        val bottom = top + s
+        val body = Path().apply {
+            moveTo(cx - neckW / 2, neckY)
+            cubicTo(cx - neckW, neckY + s * 0.08f, cx - bodyW / 2, neckY + s * 0.2f, cx - bodyW / 2, neckY + s * 0.42f)
+            cubicTo(cx - bodyW / 2, bottom - s * 0.02f, cx - bodyW * 0.3f, bottom, cx, bottom)
+            cubicTo(cx + bodyW * 0.3f, bottom, cx + bodyW / 2, bottom - s * 0.02f, cx + bodyW / 2, neckY + s * 0.42f)
+            cubicTo(cx + bodyW / 2, neckY + s * 0.2f, cx + neckW, neckY + s * 0.08f, cx + neckW / 2, neckY)
+            close()
+        }
+        canvas.drawPath(body, shadow)
+        canvas.drawPath(body, felt)
+        val gather = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = 0x55000000; strokeWidth = s * 0.012f; strokeCap = Paint.Cap.ROUND }
+        for (i in listOf(-2, -1, 1, 2)) {
+            val x = cx + i * neckW * 0.22f
+            canvas.drawPath(Path().apply { moveTo(x, neckY + s * 0.02f); quadTo(x + i * s * 0.04f, neckY + s * 0.12f, x + i * s * 0.07f, neckY + s * (0.24f - 0.14f * openness)) }, gather)
+        }
+        canvas.save()
+        canvas.scale(0.82f, 0.84f, cx, neckY + (bottom - neckY) * 0.56f)
+        val w = (s * 0.012f).coerceIn(1f * d, 1.6f * d)
+        canvas.drawPath(body, Stitch.paint(w, w * 3f, w * 2.1f))
+        canvas.restore()
+        val fw = neckW * (1.7f + 0.3f * openness)
+        val frillTop = neckY - s * (0.13f + 0.04f * openness)
+        val frill = Path().apply {
+            moveTo(cx - neckW / 2, neckY)
+            lineTo(cx - fw / 2, frillTop + s * 0.02f)
+            quadTo(cx - fw / 3, frillTop - s * 0.02f, cx - fw / 6, frillTop + s * 0.015f)
+            quadTo(cx, frillTop - s * 0.025f, cx + fw / 6, frillTop + s * 0.015f)
+            quadTo(cx + fw / 3, frillTop - s * 0.02f, cx + fw / 2, frillTop + s * 0.02f)
+            lineTo(cx + neckW / 2, neckY)
+            close()
+        }
+        canvas.drawPath(frill, shadow)
+        canvas.drawPath(frill, felt)
+        if (openness > 0.05f) {
+            val mouthH = (neckY - frillTop) * 0.55f * openness
+            canvas.drawOval(RectF(cx - fw * 0.36f, frillTop + s * 0.02f, cx + fw * 0.36f, frillTop + s * 0.02f + mouthH), Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF050505.toInt() })
+        }
+        val cord = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; color = Stitch.THREAD; strokeWidth = s * 0.02f; strokeCap = Paint.Cap.ROUND
+            setShadowLayer(0.8f * d, 0f, 1f * d, Stitch.SHADOW)
+        }
+        val bead = Stitch.fill(density = d)
+        canvas.drawLine(cx - neckW / 2 - s * 0.015f, neckY, cx + neckW / 2 + s * 0.015f, neckY, cord)
+        val kx = cx + neckW / 2 + s * 0.015f
+        val loop = s * (0.07f + 0.05f * openness)
+        canvas.drawOval(RectF(kx - s * 0.01f, neckY - loop, kx + loop * 1.4f, neckY + s * 0.01f), cord)
+        canvas.drawPath(Path().apply { moveTo(kx, neckY); quadTo(kx + s * 0.05f, neckY + s * 0.08f, kx + s * 0.02f, neckY + s * 0.16f) }, cord)
+        canvas.drawPath(Path().apply { moveTo(kx, neckY); quadTo(kx - s * 0.02f, neckY + s * 0.09f, kx - s * 0.04f, neckY + s * 0.13f) }, cord)
+        canvas.drawCircle(kx + s * 0.02f, neckY + s * 0.16f, s * 0.026f, bead)
+        canvas.drawCircle(kx - s * 0.04f, neckY + s * 0.13f, s * 0.026f, bead)
+    }
+
+    /** ジーンズのポケット。開くと中からウィジェットのカードがのぞく。 */
+    fun pocket(canvas: Canvas, view: View, openness: Float) {
+        val d = view.resources.displayMetrics.density
+        val s = min(view.width, view.height) * 0.9f
+        val cx = view.width / 2f
+        val cy = view.height / 2f
+        val r = RectF(cx - s * 0.42f, cy - s * 0.3f, cx + s * 0.42f, cy + s * 0.4f)
+        // のぞくカード（開くほど上に出る）
+        val card = RectF(r.left + s * 0.14f, r.top - s * 0.22f * openness, r.right - s * 0.14f, r.top + s * 0.3f)
+        canvas.drawRoundRect(card, s * 0.05f, s * 0.05f, Stitch.fill(density = d))
+        val shape = Path().apply {
+            moveTo(r.left, r.top)
+            lineTo(r.right, r.top)
+            lineTo(r.right, r.bottom - s * 0.16f)
+            quadTo(r.right, r.bottom, cx, r.bottom + s * 0.04f)
+            quadTo(r.left, r.bottom, r.left, r.bottom - s * 0.16f)
+            close()
+        }
+        canvas.drawPath(shape, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Stitch.FELT; setShadowLayer(6f * d, 0f, 3f * d, 0xC0000000.toInt()) })
+        canvas.drawPath(shape, Stitch.fabric(Stitch.FELT, d))
+        val w = (s * 0.012f).coerceIn(1f * d, 1.6f * d)
+        val seam = Stitch.paint(w, w * 3f, w * 2.1f)
+        canvas.drawLine(r.left + s * 0.05f, r.top + s * 0.06f, r.right - s * 0.05f, r.top + s * 0.06f, seam)
+        canvas.drawLine(r.left + s * 0.05f, r.top + s * 0.11f, r.right - s * 0.05f, r.top + s * 0.11f, seam)
+        canvas.save()
+        canvas.scale(0.84f, 0.8f, cx, r.centerY() + s * 0.06f)
+        canvas.drawPath(Path().apply {
+            moveTo(r.left, r.top + s * 0.2f); lineTo(r.left, r.bottom - s * 0.16f)
+            quadTo(r.left, r.bottom, cx, r.bottom + s * 0.04f); quadTo(r.right, r.bottom, r.right, r.bottom - s * 0.16f)
+            lineTo(r.right, r.top + s * 0.2f)
+        }, seam)
+        canvas.restore()
+    }
+}
+
+/** ステッチの見た目のアプリアイコン：フェルトのワッペンに、ジャンルの刺繍アイコン。 */
+class StitchAppIcon(context: Context, private val genre: Genre) : View(context) {
+    private val rect = RectF()
+
+    override fun onDraw(canvas: Canvas) {
+        val m = width * 0.06f
+        rect.set(m, m, width - m, height - m)
+        StitchShapes.patch(canvas, this, rect, width * 0.22f)
+        val s = (width * 0.56f).toInt().coerceAtLeast(8)
+        canvas.drawBitmap(GenreIcons.bitmap(genre, s), (width - s) / 2f, (height - s) / 2f, null)
+    }
+}

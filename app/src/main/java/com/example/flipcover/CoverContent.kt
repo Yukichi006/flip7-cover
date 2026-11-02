@@ -86,7 +86,7 @@ object CoverContent {
         if (prefs.showBattery) {
             val bw = (prefs.batterySize * w).toInt()
             val bh = (bw * BatteryView.ROW_RATIO * BatteryView.MAX_ROWS).toInt()
-            root.addView(BatteryView(context).apply { tag = TAG_BATTERY }, place(size, prefs.batteryX, prefs.batteryY, bw, bh))
+            root.addView(BatteryView(context, stitch = prefs.stitch).apply { tag = TAG_BATTERY }, place(size, prefs.batteryX, prefs.batteryY, bw, bh))
         }
 
         // ウィジェットとライトは、アプリを開いたときに暗い幕の下に隠れるよう、アプリより先に置く
@@ -100,12 +100,12 @@ object CoverContent {
             root.addView(widgets.area, place(size, prefs.widgetX, prefs.widgetY, widgets.width, widgets.height))
         } else if (widgets != null) {
             val bs = (prefs.widgetButtonSize * w).toInt()
-            widgetButton = LauncherButton(context, prefs.widgetButtonStyle).apply { tag = TAG_WIDGET_BUTTON }
+            widgetButton = LauncherButton(context, prefs.widgetButtonStyle, stitch = prefs.stitch, widget = true).apply { tag = TAG_WIDGET_BUTTON }
             root.addView(widgetButton, place(size, prefs.widgetButtonX, prefs.widgetButtonY, bs, bs))
         }
         if (prefs.showTorch) {
             val tw = (prefs.torchSize * w).toInt()
-            val torch = TorchSwitch(context, interactive = !editing).apply { tag = TAG_TORCH }
+            val torch = TorchSwitch(context, interactive = !editing, stitch = prefs.stitch).apply { tag = TAG_TORCH }
             root.addView(torch, place(size, prefs.torchX, prefs.torchY, tw, (tw * TORCH_ASPECT).toInt()))
         }
 
@@ -252,13 +252,22 @@ object CoverContent {
         val apps = prefs.apps.mapNotNull { cn -> runCatching { pm.getActivityIcon(cn) }.getOrNull()?.let { cn to it } }
         if (apps.isEmpty()) return
 
-        fun iconView(cn: ComponentName, icon: android.graphics.drawable.Drawable, iconSize: Int) = ImageView(context).apply {
-            setImageDrawable(icon)
-            contentDescription = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
-            val pad = iconSize / 9
-            setPadding(pad, pad, pad, pad)
-            // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
-            if (onLaunch != null) setOnClickListener { onLaunch(cn) }
+        fun iconView(cn: ComponentName, icon: android.graphics.drawable.Drawable, iconSize: Int): View {
+            val label = runCatching { pm.getActivityInfo(cn, 0).loadLabel(pm) }.getOrNull()
+            // ステッチの見た目では、ワッペンに刺繍のジャンルアイコンを縫ったものにする
+            val v = if (prefs.stitch) {
+                val category = runCatching { pm.getApplicationInfo(cn.packageName, 0).category }.getOrDefault(-1)
+                StitchAppIcon(context, Genre.guess(context, cn.packageName, label?.toString().orEmpty(), category))
+            } else ImageView(context).apply {
+                setImageDrawable(icon)
+                val pad = iconSize / 9
+                setPadding(pad, pad, pad, pad)
+            }
+            return v.apply {
+                contentDescription = label
+                // プレビューではタップを奪わないよう、起動先があるときだけクリック可能にする
+                if (onLaunch != null) setOnClickListener { onLaunch(cn) }
+            }
         }
 
         if (!prefs.useLauncher) {
@@ -308,7 +317,7 @@ object CoverContent {
         if (!editing || showOpen) root.addView(grid, place(size, prefs.gridCx, prefs.gridCy, gw, gh))
 
         val buttonSize = (prefs.launcherSize * size.width).toInt()
-        val button = LauncherButton(context, prefs.launcherStyle).apply { tag = TAG_LAUNCHER }
+        val button = LauncherButton(context, prefs.launcherStyle, stitch = prefs.stitch).apply { tag = TAG_LAUNCHER }
         root.addView(button, place(size, prefs.launcherX, prefs.launcherY, buttonSize, buttonSize))
         if (showOpen) button.showOpen()
         if (!editing && scrim != null) AppLauncher(button, scrim, grid, icons)
