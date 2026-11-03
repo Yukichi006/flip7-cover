@@ -326,15 +326,36 @@ object StitchShapes {
     }
 }
 
-/** ステッチの見た目のアプリアイコン：フェルトのワッペンに、ジャンルの刺繍アイコン。 */
-class StitchAppIcon(context: Context, private val genre: Genre) : View(context) {
+/** ステッチの見た目のアプリアイコン：フェルトのワッペンに、ジャンルの刺繍アイコンと、その下に小さくアプリ名。 */
+class StitchAppIcon(context: Context, private val genre: Genre, private val label: String) : View(context) {
     private val rect = RectF()
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Stitch.THREAD
+        textAlign = Paint.Align.CENTER
+        setShadowLayer(0.6f * resources.displayMetrics.density, 0f, 1f * resources.displayMetrics.density, Stitch.SHADOW)
+    }
 
     override fun onDraw(canvas: Canvas) {
-        val m = width * 0.06f
+        val m = width * 0.05f
         rect.set(m, m, width - m, height - m)
-        StitchShapes.patch(canvas, this, rect, width * 0.22f)
-        val s = (width * 0.56f).toInt().coerceAtLeast(8)
-        canvas.drawBitmap(GenreIcons.bitmap(genre, s), (width - s) / 2f, (height - s) / 2f, null)
+        StitchShapes.patch(canvas, this, rect, width * 0.2f)
+        // ワッペンの縁のステッチにかからないよう、内側にアイコンと名前を収める
+        text.textSize = width * 0.13f
+        val inner = width * 0.17f
+        val labelH = text.textSize * 1.25f
+        val s = (min(width - inner * 2, height - inner * 2 - labelH)).toInt().coerceAtLeast(8)
+        val top = (height - s - labelH) / 2f
+        canvas.drawBitmap(GenreIcons.bitmap(genre, s), (width - s) / 2f, top, null)
+        // 長い名前は、少しだけ文字を小さくし、それでも入らなければ末尾を「…」にする
+        val avail = width - inner * 1.4f
+        val base = text.textSize
+        val baseline = top + s + base * 1.05f
+        if (text.measureText(label) > avail) text.textSize = maxOf(base * 0.78f, base * avail / text.measureText(label))
+        var t = label
+        if (text.measureText(t) > avail) {
+            val n = text.breakText(t, true, avail - text.measureText("…"), null)
+            t = t.take(n.coerceAtLeast(1)) + "…"
+        }
+        canvas.drawText(t, width / 2f, baseline, text)
     }
 }

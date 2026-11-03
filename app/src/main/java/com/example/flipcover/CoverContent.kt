@@ -257,7 +257,7 @@ object CoverContent {
             // ステッチの見た目では、ワッペンに刺繍のジャンルアイコンを縫ったものにする
             val v = if (prefs.stitch) {
                 val category = runCatching { pm.getApplicationInfo(cn.packageName, 0).category }.getOrDefault(-1)
-                StitchAppIcon(context, Genre.guess(context, cn.packageName, label?.toString().orEmpty(), category))
+                StitchAppIcon(context, Genre.guess(context, cn.packageName, label?.toString().orEmpty(), category), label?.toString().orEmpty())
             } else ImageView(context).apply {
                 setImageDrawable(icon)
                 val pad = iconSize / 9
