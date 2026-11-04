@@ -1,28 +1,42 @@
 package com.example.flipcover
 
-import android.accessibilityservice.AccessibilityService
 import android.app.ActivityOptions
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.view.Display
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 
 /**
- * 端末が閉じられてカバー画面だけが点灯したとき、
- * カバー画面上にアクセシビリティオーバーレイとしてアニメーションを表示する。
- * ダブルタップで非表示にでき、次に閉じ直すと再び表示される。
+ * 端末が閉じられてカバー画面だけが点灯したとき、カバー画面の上に FlipCover の表示を重ねる。
+ *
+ * ユーザー補助（アクセシビリティ）は使わない。PayPay や銀行のアプリは、ユーザー補助のサービスが有効だと
+ * 決済などを止めるため。代わりに「他のアプリの上に重ねて表示」の許可で重ね、常駐サービス（通知欄に小さく出る）として動く。
+ *
+ * - アプリのボタンを押したら、そのアプリをカバー画面で開き、少し待ってから表示を消す
+ * - 消した表示は、カバー画面がいったん消えて点き直したとき（または開いて閉じ直したとき）に出し直す
+ *   （ユーザー補助を使わないので、アプリを閉じた瞬間はわからない）
+ * - ダブルタップで消すこともできる
  */
-class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListener,
+class CoverService : Service(), DisplayManager.DisplayListener,
     SharedPreferences.OnSharedPreferenceChangeListener {
 
     private lateinit var displayManager: DisplayManager
@@ -34,26 +48,49 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     private var dismissedUntilReopen = false
     private var coverDisplayId = Display.INVALID_DISPLAY
 
-    /** カバー画面で起動中のアプリ。その画面が出たらオーバーレイを消す。 */
-    private var launchingPackage: String? = null
-
-    /** オーバーレイを消して見せているアプリ。そこから戻ってきたら、オーバーレイを出し直す。 */
-    private var openedApp: String? = null
-
-    /**
-     * 閉じているときにカバー画面の奥に出ていた画面（Samsung の待受画面など）のアプリ。
-     * 開いたアプリからここへ戻ったら、アプリを閉じたと判断する。
-     */
-    private val coverHomes = mutableSetOf<String>()
-
     private var folded = false
 
-    override fun onServiceConnected() {
+    /** カバー画面が点いていたか（消えて点き直したら、消していた表示を出し直す）。 */
+    private var coverWasOn = false
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        startForegroundWithNotice()
         prefs = Prefs(this)
         prefs.registerListener(this)
         displayManager = getSystemService(DisplayManager::class.java)
         displayManager.registerDisplayListener(this, handler)
         update()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 設定でオフにされていたり、重ねて表示の許可がなければ止まる
+        if (!prefs.enabled || !Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        update()
+        return START_STICKY
+    }
+
+    /** 常駐していることを、通知欄に目立たない通知で出す（Android の決まり）。 */
+    private fun startForegroundWithNotice() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, "カバー画面の表示", NotificationManager.IMPORTANCE_MIN).apply {
+            description = "閉じたときにカバー画面へ表示するために動いていることを示します"
+            setShowBadge(false)
+        })
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val notice = Notification.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle("FlipCover")
+            .setContentText("閉じたときにカバー画面へ表示します")
+            .setContentIntent(open)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTICE_ID, notice, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
     }
 
     override fun onDestroy() {
@@ -70,6 +107,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
         // 設定変更を即座に反映するため作り直す
         hide()
+        if (!prefs.enabled) { stopSelf(); return }
         update()
     }
 
@@ -79,21 +117,22 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         folded = cover != null && cover.state == Display.STATE_ON &&
             main?.state != Display.STATE_ON
 
+        val coverOn = cover != null && cover.state == Display.STATE_ON
+        // カバー画面が消えて点き直したら、アプリを開くなどで消していた表示を出し直す
+        if (coverOn && !coverWasOn) dismissedUntilReopen = false
+        coverWasOn = coverOn
+
         if (!folded) {
             dismissedUntilReopen = false
-            openedApp = null
-            // 起動待ちのまま開いたときは、次に閉じたときの表示を消してしまわないよう取り消す
-            launchingPackage = null
-            widgetTapped = false
             handler.removeCallbacks(fadeOut)
             hide()
             return
         }
-        if (prefs.enabled && !dismissedUntilReopen && overlay == null) show(cover!!)
+        if (prefs.enabled && Settings.canDrawOverlays(this) && !dismissedUntilReopen && overlay == null) show(cover!!)
     }
 
     private fun show(display: Display) {
-        val ctx = createWindowContext(display, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, null)
+        val ctx = createWindowContext(display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
         val wm = ctx.getSystemService(WindowManager::class.java)
         val view = CoverContent.create(ctx, prefs, CoverContent.coverSize(display), ::launch, ::onWidgetTapped)
 
@@ -110,7 +149,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -131,8 +170,7 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
 
     /**
      * アプリをカバー画面上で起動する。
-     * すぐにオーバーレイを消すと、アプリが出るまでの間に元のカバー画面が見えてしまうので、
-     * アプリの画面が出たのを確かめてから（出なくても少し待ってから）フェードアウトして消す。
+     * すぐに表示を消すと、アプリが出るまでの間に元のカバー画面が見えてしまうので、少し待ってからフェードアウトして消す。
      */
     private fun launch(component: ComponentName) {
         val intent = Intent(Intent.ACTION_MAIN)
@@ -143,9 +181,8 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
         runCatching { startActivity(intent, options.toBundle()) }
             .onSuccess {
                 dismissedUntilReopen = true
-                launchingPackage = component.packageName
                 handler.removeCallbacks(fadeOut)
-                handler.postDelayed(fadeOut, LAUNCH_TIMEOUT_MS)
+                handler.postDelayed(fadeOut, LAUNCH_FADE_MS)
             }
             .onFailure { Toast.makeText(this, "起動できませんでした: ${it.message}", Toast.LENGTH_LONG).show() }
     }
@@ -153,26 +190,12 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     /**
      * ウィジェットがタップされたとき。モバイルSuica のように、残高を読むために自分のアプリの画面を開く
      * ウィジェットがあるが、この表示はいつも一番上にあるので、そのままでは画面が下に隠れてしまう。
-     * そこで、少しの間そのアプリの画面が出るのを待ち、出たら表示を消して見えるようにする。
-     * 画面を開かず中身を更新するだけのウィジェットなら、表示はそのまま残す。
+     * ユーザー補助を使わないので開いたかはわからないため、少し待ってから表示を消す（次にカバー画面が点いたら出し直す）。
      */
-    private fun onWidgetTapped(packageName: String) {
-        if (launchingPackage != null) return
-        launchingPackage = packageName
-        widgetTapped = true
-        handler.removeCallbacks(forgetWidgetApp)
-        handler.postDelayed(forgetWidgetApp, WIDGET_APP_WAIT_MS)
-    }
-
-    /**
-     * ウィジェットのタップから待っている途中か。モバイルSuica のように、残高を読むのに
-     * 「おサイフケータイ」など別のアプリの画面を開くウィジェットもあるので、その間はどのアプリの画面でも消す。
-     */
-    private var widgetTapped = false
-
-    private val forgetWidgetApp = Runnable {
-        launchingPackage = null
-        widgetTapped = false
+    private fun onWidgetTapped(@Suppress("UNUSED_PARAMETER") packageName: String) {
+        dismissedUntilReopen = true
+        handler.removeCallbacks(fadeOut)
+        handler.postDelayed(fadeOut, WIDGET_FADE_MS)
     }
 
     private fun hide() {
@@ -183,60 +206,26 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
     }
 
     private val fadeOut = Runnable {
-        openedApp = launchingPackage
-        launchingPackage = null
         val v = overlay ?: return@Runnable
         v.animate().alpha(0f).setDuration(150).withEndAction { if (overlay === v) hide() }.start()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        val shown = event.packageName?.toString() ?: return
-        if (!folded || shown == packageName) return
-
-        val opened = openedApp
-        if (opened != null) {
-            // 開いたアプリから待受画面（ホーム）へ戻ったら、オーバーレイを出し直す。
-            // キーボードや、途中で出る別のアプリの画面では戻さない
-            if (shown != opened && (shown in coverHomes || shown in homePackages())) {
-                openedApp = null
-                dismissedUntilReopen = false
-                update()
-            }
-            return
-        }
-        val pkg = launchingPackage
-        if (pkg == null) {
-            // アプリを開いていない間にカバー画面に出る画面を、待受画面として覚えておく
-            coverHomes += shown
-            return
-        }
-        if (shown == pkg || (widgetTapped && shown !in SYSTEM_PACKAGES)) {
-            widgetTapped = false
-            // アプリの画面の上に表示が戻ってこないよう、閉じ直すまでは出さない
-            dismissedUntilReopen = true
-            handler.removeCallbacks(forgetWidgetApp)
-            // 最初の画面が描かれるのを少しだけ待ってから消す
-            handler.removeCallbacks(fadeOut)
-            handler.postDelayed(fadeOut, 120)
-        }
-    }
-    override fun onInterrupt() {}
-
-    /** ホームアプリ（ランチャー）のパッケージ名。 */
-    private fun homePackages(): Set<String> =
-        packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
-            .map { it.activityInfo.packageName }.toSet()
-
     companion object {
-        /** アプリの画面が出たことが分からなくても、この時間でオーバーレイを消す。 */
-        private const val LAUNCH_TIMEOUT_MS = 1500L
+        /** アプリを開いてから表示を消すまでの時間（アプリの画面が出るのを待つ）。 */
+        private const val LAUNCH_FADE_MS = 700L
 
-        /** 画面の切り替わりを知らせてくるが、アプリの画面ではないもの（通知パネルなど）。 */
-        private val SYSTEM_PACKAGES = setOf("com.android.systemui", "android")
+        /** ウィジェットをタップしてから表示を消すまでの時間。 */
+        private const val WIDGET_FADE_MS = 900L
 
-        /** ウィジェットをタップしてから、そのアプリの画面が出るのを待つ時間。 */
-        private const val WIDGET_APP_WAIT_MS = 4000L
+        private const val CHANNEL = "cover"
+        private const val NOTICE_ID = 1
+
+        /** 設定がオンで、重ねて表示が許可されていれば、常駐サービスを動かす（オフなら止める）。 */
+        fun sync(context: Context) {
+            val intent = Intent(context, CoverService::class.java)
+            if (Prefs(context).enabled && Settings.canDrawOverlays(context)) runCatching { context.startForegroundService(intent) }
+            else context.stopService(intent)
+        }
 
         /**
          * Galaxy Z Flip のカバー画面は通常 displayId=1 の内蔵ディスプレイとして見える。
@@ -244,5 +233,12 @@ class CoverOverlayService : AccessibilityService(), DisplayManager.DisplayListen
          */
         fun findCoverDisplay(dm: DisplayManager): Display? =
             dm.getDisplay(1) ?: dm.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+    }
+}
+
+/** 電源を入れたときと、FlipCover を更新したときに、常駐サービスを動かし直す。 */
+class CoverBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) CoverService.sync(context)
     }
 }

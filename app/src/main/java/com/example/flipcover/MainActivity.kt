@@ -64,12 +64,16 @@ class MainActivity : AppCompatActivity() {
         editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
         findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
 
-        findViewById<Button>(R.id.openAccessibility).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        // 「他のアプリの上に重ねて表示」の許可の画面（ユーザー補助は使わない）
+        findViewById<Button>(R.id.openOverlayPermission).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")))
         }
         findViewById<MaterialSwitch>(R.id.enabledSwitch).apply {
             isChecked = prefs.enabled
-            setOnCheckedChangeListener { _, v -> prefs.enabled = v }
+            setOnCheckedChangeListener { _, v ->
+                prefs.enabled = v
+                CoverService.sync(this@MainActivity)
+            }
         }
         findViewById<MaterialSwitch>(R.id.clockSwitch).apply {
             isChecked = prefs.showClock
@@ -126,6 +130,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 許可の画面から戻ってきたときなどに、常駐サービスを動かす（または止める）
+        CoverService.sync(this)
         refresh()
     }
 
@@ -359,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
         }.joinToString("、").ifEmpty { "なし" }
 
-        val cover = CoverOverlayService.findCoverDisplay(getSystemService(DisplayManager::class.java))
+        val cover = CoverService.findCoverDisplay(getSystemService(DisplayManager::class.java))
         val size = CoverContent.coverSize(cover)
         val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
         // アプリかウィジェットのどちらかをボタンにまとめているときだけ、開いた配置を見せる切り替えを出す
@@ -368,19 +374,14 @@ class MainActivity : AppCompatActivity() {
         editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = expandedPreview), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text =
-            if (isServiceEnabled()) "✅ サービス有効" else "⚠️ ユーザー補助で「FlipCover」をオンにしてください"
+            if (Settings.canDrawOverlays(this)) "✅ 重ねて表示が許可されています"
+            else "⚠️「他のアプリの上に重ねて表示」で FlipCover を許可してください（下のボタン）"
         findViewById<TextView>(R.id.displayInfo).text = displayInfo()
-    }
-
-    private fun isServiceEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-        val me = ComponentName(this, CoverOverlayService::class.java).flattenToString()
-        return enabled.split(':').any { it.equals(me, ignoreCase = true) }
     }
 
     private fun displayInfo(): String {
         val dm = getSystemService(DisplayManager::class.java)
-        val cover = CoverOverlayService.findCoverDisplay(dm)
+        val cover = CoverService.findCoverDisplay(dm)
         return dm.displays.joinToString("\n") { d ->
             val mode = d.mode
             val state = when (d.state) {

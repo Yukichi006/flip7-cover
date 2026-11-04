@@ -143,7 +143,7 @@ object CoverContent {
         // ウィジェットのアプリがアンインストールされたものは飛ばす
         val widgets = prefs.widgetIds.mapNotNull { id -> am.getAppWidgetInfo(id)?.let { id to it } }
         if (widgets.isEmpty()) return null
-        val cover = CoverOverlayService.findCoverDisplay(context.getSystemService(DisplayManager::class.java))
+        val cover = CoverService.findCoverDisplay(context.getSystemService(DisplayManager::class.java))
         val onCover = runCatching { context.display?.displayId == cover?.displayId }.getOrDefault(false)
         val widgetContext = if (cover != null && !onCover) context.createDisplayContext(cover) else context
         val density = widgetContext.resources.displayMetrics.density

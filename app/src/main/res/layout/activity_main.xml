@@ -154,11 +154,11 @@
                         android:text="全般" />
 
                     <Button
-                        android:id="@+id/openAccessibility"
+                        android:id="@+id/openOverlayPermission"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="ユーザー補助の設定を開く" />
+                        android:text="「他のアプリの上に重ねて表示」の許可を開く" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/enabledSwitch"
