@@ -8,7 +8,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.flipcover"
+        // アプリの ID。見本用の「com.example」は怪しいアプリに使われやすく、Play プロテクトに止められるので、自分の名前にする
+        // （コードの置き場所の namespace は com.example.flipcover のまま）
+        applicationId = "io.github.yukichi006.flipcover"
         minSdk = 31
         targetSdk = 35
         // CI の実行番号を使い、更新のたびに大きくなるようにする

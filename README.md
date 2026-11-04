@@ -34,6 +34,11 @@ Galaxy Z Flip7 のカバー画面に、光の時計とアプリ・ウィジェ�
 ## 設定画面
 左の列でカテゴリ（全般・時計・アプリ・ウィジェット・電池・ライト）を選ぶと、右下にその設定だけが出る。右上のプレビューは常に表示され、ドラッグ・ピンチで配置を調整できる。
 
+## 4.0.0 でアプリの ID が変わりました
+アプリの ID を `com.example.flipcover` から `io.github.yukichi006.flipcover` に変えました（見本用の「com.example」は Play プロテクトに有害と判定されやすいため）。別のアプリとして入るので：
+- Obtainium で 4.0.0 を入れたら、古い FlipCover（`com.example.flipcover`）はアンインストールする
+- カバー画面に置いたアプリ・ウィジェット・配置の設定は引き継がれないので、設定し直す
+
 ## インストールと更新
 `main` に push すると GitHub Actions が APK をビルドし、[Releases](../../releases) に `flipcover-v<バージョン>.apk` を公開します。
 
