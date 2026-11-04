@@ -31,8 +31,10 @@ android {
     }
 
     buildTypes {
+        // 配るのは正式版（デバッグできない）。署名は上の固定鍵
         release {
             isMinifyEnabled = false
+            isDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
         }
     }

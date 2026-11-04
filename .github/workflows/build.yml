@@ -38,15 +38,16 @@ jobs:
       - name: バージョンを読む
         id: version
         run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
-      - run: chmod +x gradlew && ./gradlew assembleDebug
+      # 配る APK は正式版（デバッグできない）で作る
+      - run: chmod +x gradlew && ./gradlew assembleRelease
         env:
           FLIPCOVER_KEYSTORE_PASSWORD: ${{ secrets.FLIPCOVER_KEYSTORE_PASSWORD }}
       - name: APK の SHA-256 を表示
-        run: sha256sum app/build/outputs/apk/debug/*.apk | tee -a "$GITHUB_STEP_SUMMARY"
+        run: sha256sum app/build/outputs/apk/release/*.apk | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: flipcover-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/release/*.apk
 
   # main の更新ごとに Releases へ APK を公開する（Obtainium がここから更新を取る）
   release:
@@ -71,7 +72,7 @@ jobs:
             exit 1
           fi
           apk="flipcover-$TAG.apk"
-          mv app-debug.apk "$apk"
+          mv app-release.apk "$apk"
           gh release create "$TAG" "$apk" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \

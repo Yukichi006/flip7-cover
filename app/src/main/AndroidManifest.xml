@@ -8,8 +8,6 @@
     <!-- 上の表示のために常駐する（通知欄に目立たない通知が出る） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- 電源を入れたときに、常駐を動かし直す -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- カバー画面に置くアプリを選ぶため、ランチャーに出るアプリの一覧を取得する -->
     <queries>
@@ -51,12 +49,11 @@
                 android:value="端末を閉じたときに、カバー画面へ時計やアプリのボタンを重ねて表示するため" />
         </service>
 
-        <!-- 電源を入れたときと、FlipCover を更新したときに、上の常駐サービスを動かし直す -->
+        <!-- FlipCover を更新したときに、上の常駐サービスを動かし直す（電源を入れたときは、FlipCover を一度開くと動き出す） -->
         <receiver
-            android:name=".CoverBootReceiver"
+            android:name=".CoverUpdateReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>

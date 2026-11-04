@@ -236,9 +236,13 @@ class CoverService : Service(), DisplayManager.DisplayListener,
     }
 }
 
-/** 電源を入れたときと、FlipCover を更新したときに、常駐サービスを動かし直す。 */
-class CoverBootReceiver : BroadcastReceiver() {
+/**
+ * FlipCover を更新したときに、常駐サービスを動かし直す。
+ * 電源を入れたときに自動で動き出す仕組み（起動時の許可）は、悪いアプリと見分けにくくなるので使わない
+ * （電源を入れ直したあとは、FlipCover を一度開くと動き出す）。
+ */
+class CoverUpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) CoverService.sync(context)
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) CoverService.sync(context)
     }
 }
