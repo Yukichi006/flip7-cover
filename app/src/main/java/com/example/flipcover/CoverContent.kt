@@ -40,6 +40,13 @@ object CoverContent {
     const val TAG_BATTERY = "battery"
 
     /** カバー画面の実寸。取得できなければ Flip7 の値を使う。 */
+    /**
+     * Galaxy Z Flip のカバー画面は通常 displayId=1 の内蔵ディスプレイとして見える。
+     * 見つからない場合は既定以外のディスプレイを探す。
+     */
+    fun findCoverDisplay(dm: DisplayManager): Display? =
+        dm.getDisplay(1) ?: dm.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+
     fun coverSize(display: Display?): Size {
         val mode = display?.mode
         return if (mode != null && mode.physicalWidth > 0) Size(mode.physicalWidth, mode.physicalHeight)
@@ -143,7 +150,7 @@ object CoverContent {
         // ウィジェットのアプリがアンインストールされたものは飛ばす
         val widgets = prefs.widgetIds.mapNotNull { id -> am.getAppWidgetInfo(id)?.let { id to it } }
         if (widgets.isEmpty()) return null
-        val cover = CoverService.findCoverDisplay(context.getSystemService(DisplayManager::class.java))
+        val cover = findCoverDisplay(context.getSystemService(DisplayManager::class.java))
         val onCover = runCatching { context.display?.displayId == cover?.displayId }.getOrDefault(false)
         val widgetContext = if (cover != null && !onCover) context.createDisplayContext(cover) else context
         val density = widgetContext.resources.displayMetrics.density
