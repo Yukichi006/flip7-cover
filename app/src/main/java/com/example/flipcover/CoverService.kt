@@ -148,15 +148,23 @@ class CoverService : Service(), DisplayManager.DisplayListener,
         })
         view.setOnTouchListener { _, e -> detector.onTouchEvent(e) }
 
+        // 重ねて表示の窓は、何も指定しないと下のバー（ジェスチャーの棒）などの分を除いた大きさになり、下が見切れる。
+        // カバー画面の実寸を指定し、バーの分も除かないようにする
+        val size = CoverContent.coverSize(display)
         val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            size.width,
+            size.height,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.OPAQUE,
         ).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            x = 0
+            y = 0
+            fitInsetsTypes = 0
+            fitInsetsSides = 0
             // カメラ穴の部分まで描画する
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
