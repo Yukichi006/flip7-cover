@@ -158,7 +158,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="カバー画面に置く方法" />
+                        android:text="「他のアプリの上に重ねて表示」の許可を開く" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/enabledSwitch"

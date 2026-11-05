@@ -3,6 +3,14 @@
 
     <!-- 接続中の Bluetooth 機器の電池残量を読む -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- 閉じたときに、カバー画面へ表示を重ねる（設定画面で自分で許可したときだけ。ユーザー補助は使わない）。
+         この組み合わせは Google Play プロテクトに有害と判定されるが、持ち主の了承のうえで使う -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 上の表示のために常駐する（通知欄に目立たない通知が出る） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 電源を入れたときに、常駐を動かし直す -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- カバー画面に置くアプリを選ぶため、ランチャーに出るアプリの一覧を取得する -->
     <queries>
@@ -32,8 +40,29 @@
             </intent-filter>
         </activity>
 
-        <!-- カバー画面の全画面表示（時計・アプリのボタン・ウィジェット）。カバー画面で FlipCover を開くと、ここに切り替わる。
-             ユーザー補助・重ねて表示・常駐などの危ない許可は使わない -->
+        <!-- カバー画面に表示を重ねる常駐サービス（ユーザー補助は使わない。PayPay などが止まらないように）。
+             通知欄に目立たない通知を出して動く -->
+        <service
+            android:name=".CoverService"
+            android:exported="false"
+            android:label="@string/service_label"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="端末を閉じたときに、カバー画面へ時計やアプリのボタンを重ねて表示するため" />
+        </service>
+
+        <!-- 電源を入れたときと、FlipCover を更新したときに、上の常駐サービスを動かし直す -->
+        <receiver
+            android:name=".CoverBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- カバー画面の全画面表示（重ねて表示の許可がないときの予備）。カバー画面で FlipCover のアイコンを開くと、ここに切り替わる -->
         <activity
             android:name=".CoverActivity"
             android:exported="false"
