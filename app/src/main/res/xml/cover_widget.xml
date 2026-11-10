@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- カバー画面のウィジェットの大きさなど。keyguard はカバー画面（ロック画面側）に置く種類という意味 -->
-<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="352dp"
-    android:minHeight="339dp"
-    android:resizeMode="vertical|horizontal"
-    android:widgetCategory="keyguard"
-    android:updatePeriodMillis="0"
-    android:initialLayout="@layout/widget_cover" />

@@ -286,12 +286,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Galaxy の「モードとルーチン」を開く。見つからなければ、設定アプリを開いて場所を伝える。
-     */
+    /** 設定アプリを開く（そこから「モードとルーチン」を開いてもらう）。 */
     private fun openRoutines() {
-        val routines = packageManager.getLaunchIntentForPackage("com.samsung.android.app.routines")
-        if (routines != null && runCatching { startActivity(routines) }.isSuccess) return
         runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         Toast.makeText(this, "設定の「モードとルーチン」を開いてください", Toast.LENGTH_LONG).show()
     }

@@ -162,25 +162,14 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:textSize="13sp"
-                        android:text="Galaxy の「モードとルーチン」に、閉じたら FlipCover を開くルーチンを作ります。\n1. 下のボタンで「モードとルーチン」を開く\n2. 「ルーチン」→「＋」\n3. 条件（もし）：「折りたたみの状態」→「完全に閉じた状態」\n4. 実行内容（実行）：「アプリ」→「アプリを起動」→ FlipCover\n5. 保存\n\nFlipCover 自身は裏で動き続けないので、危ない許可（重ねて表示・常駐・ユーザー補助）は要りません。" />
+                        android:text="Galaxy の「モードとルーチン」に、閉じたら FlipCover を開くルーチンを作ります。\n1. 下のボタンで設定を開き、「モードとルーチン」を開く\n2. 「ルーチン」→「＋」\n3. 条件（もし）：「折りたたみの状態」→「完全に閉じた状態」\n4. 実行内容（実行）：「アプリ」→「アプリを起動」→ FlipCover\n5. 保存\n\n一度開いた FlipCover の画面は、カバー画面が消えて点き直しても残ります。ダブルタップで閉じます。\n\nFlipCover 自身は裏で動き続けないので、危ない許可（重ねて表示・常駐・ユーザー補助）は要りません。" />
 
                     <Button
                         android:id="@+id/openRoutines"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="「モードとルーチン」を開く" />
-
-                    <TextView
-                        style="@style/FlipCover.Subsection"
-                        android:text="カバー画面から 1 タップで出す" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:textSize="13sp"
-                        android:text="設定 →「カバー画面」→「ウィジェット」で「FlipCover」を追加すると、カバー画面を横にスワイプしたところに出ます。押すと FlipCover の画面が開きます。\n\n一度開いた FlipCover の画面は、カバー画面が消えて点き直しても残ります。ダブルタップで閉じます。" />
+                        android:text="設定を開く" />
 
                     <TextView
                         style="@style/FlipCover.Subsection"

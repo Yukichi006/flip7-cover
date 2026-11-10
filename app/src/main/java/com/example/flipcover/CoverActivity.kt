@@ -22,7 +22,6 @@ import android.widget.Toast
  * 危ない許可（ユーザー補助・他のアプリの上に重ねて表示・常駐）は使わない、ふつうの画面。
  * FlipCover 自身は裏で動き続けず、次のどれかで開かれる：
  * - Galaxy の「モードとルーチン」の「閉じたら FlipCover を開く」（自動）
- * - カバー画面のウィジェット（[CoverWidget]）を押す
  * - カバー画面で FlipCover のアイコンを開く
  *
  * - ロック中でも出る（[setShowWhenLocked]）ので、一度開けば、カバー画面が消えて点き直してもこの画面が出る

@@ -13,8 +13,6 @@
         <intent>
             <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
         </intent>
-        <!-- 設定画面から、Galaxy の「モードとルーチン」を開く（閉じたら自動で出すルーチンを作ってもらうため） -->
-        <package android:name="com.samsung.android.app.routines" />
     </queries>
 
     <application
@@ -34,35 +32,14 @@
         </activity>
 
         <!-- カバー画面の全画面表示（時計・アプリのボタンなど）。ふつうの画面で、重ねて表示・常駐・ユーザー補助は使わない。
-             カバー画面のウィジェットを押したとき、カバー画面で FlipCover を開いたとき、Galaxy のルーチンが
+             カバー画面で FlipCover を開いたときと、Galaxy のルーチンが
              「閉じたら FlipCover を開く」を実行したときに出る。ロック中でも見られ、カバー画面が消えて点き直しても残る -->
         <activity
             android:name=".CoverActivity"
             android:exported="false"
-            android:launchMode="singleTask"
-            android:taskAffinity="io.github.yukichi006.flipcover.cover"
-            android:excludeFromRecents="true"
             android:resizeableActivity="true"
             android:showWhenLocked="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboardHidden" />
-
-        <!-- Galaxy のカバー画面に置けるウィジェット（Samsung の公式の仕組み）。時刻を出し、押すと上の全画面表示を開く。
-             権限は要らない -->
-        <receiver
-            android:name=".CoverWidget"
-            android:exported="true"
-            android:label="@string/widget_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/cover_widget" />
-            <!-- 「カバー画面用のウィジェット」という Samsung への印 -->
-            <meta-data
-                android:name="com.samsung.android.appwidget.provider"
-                android:resource="@xml/cover_widget_samsung" />
-        </receiver>
     </application>
 </manifest>

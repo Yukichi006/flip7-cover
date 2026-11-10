@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Samsung の決まり：sub_screen ＝ カバー画面に置けるウィジェット。privacyWidget ＝ ロック中は中身を隠すか（時刻だけなので隠さない） -->
-<samsung-appwidget-provider
-    display="sub_screen"
-    privacyWidget="false" />
