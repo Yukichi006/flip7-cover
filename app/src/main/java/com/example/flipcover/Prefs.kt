@@ -4,13 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.graphics.PointF
 
-/** 設定値。アプリ画面とサービスの両方から読み書きする。 */
+/** 設定値。設定画面とカバー画面の両方から読み書きする。 */
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-
-    var enabled: Boolean
-        get() = sp.getBoolean("enabled", true)
-        set(v) = sp.edit().putBoolean("enabled", v).apply()
 
     var showClock: Boolean
         get() = sp.getBoolean("clock", true)

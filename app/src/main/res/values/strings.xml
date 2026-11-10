@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">FlipCover</string>
-    <string name="service_label">FlipCover カバー画面の表示</string>
+    <string name="widget_label">FlipCover</string>
+    <string name="widget_hint">タップで FlipCover を開く</string>
 </resources>

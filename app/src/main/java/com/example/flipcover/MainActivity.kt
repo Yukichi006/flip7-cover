@@ -55,9 +55,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // カバー画面で開かれたら、設定ではなく、カバー画面の表示（時計やアプリのボタン）を出す
-        if (runCatching { display?.displayId }.getOrNull().let { it != null && it != Display.DEFAULT_DISPLAY }) {
-            startActivity(Intent(this, CoverActivity::class.java))
+        // カバー画面で開かれたときと、閉じている間に開かれたとき（Galaxy のルーチンが「閉じたら FlipCover を開く」を
+        // 実行したときなど）は、設定ではなく、カバー画面の表示（時計やアプリのボタン）を出す
+        val onCover = runCatching { display?.displayId }.getOrNull().let { it != null && it != Display.DEFAULT_DISPLAY }
+        if (onCover || CoverActivity.folded(this)) {
+            CoverActivity.open(this)
             finish()
             return
         }
@@ -70,17 +72,7 @@ class MainActivity : AppCompatActivity() {
         editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
         findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
 
-        // 「他のアプリの上に重ねて表示」の許可の画面（ユーザー補助は使わない）
-        findViewById<Button>(R.id.openOverlayPermission).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")))
-        }
-        findViewById<MaterialSwitch>(R.id.enabledSwitch).apply {
-            isChecked = prefs.enabled
-            setOnCheckedChangeListener { _, v ->
-                prefs.enabled = v
-                CoverService.sync(this@MainActivity)
-            }
-        }
+        findViewById<Button>(R.id.openRoutines).setOnClickListener { openRoutines() }
         findViewById<MaterialSwitch>(R.id.clockSwitch).apply {
             isChecked = prefs.showClock
             setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
@@ -136,8 +128,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 許可の画面から戻ってきたときなどに、常駐サービスを動かす（または止める）
-        CoverService.sync(this)
+        // 設定画面を開いたまま閉じたあとで、ルーチンが FlipCover を開いたときも、カバー画面の表示を出す
+        if (CoverActivity.folded(this)) CoverActivity.open(this)
         refresh()
     }
 
@@ -294,6 +286,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Galaxy の「モードとルーチン」を開く。見つからなければ、設定アプリを開いて場所を伝える。
+     */
+    private fun openRoutines() {
+        val routines = packageManager.getLaunchIntentForPackage("com.samsung.android.app.routines")
+        if (routines != null && runCatching { startActivity(routines) }.isSuccess) return
+        runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        Toast.makeText(this, "設定の「モードとルーチン」を開いてください", Toast.LENGTH_LONG).show()
+    }
+
     private fun bindSwitch(id: Int, initial: Boolean, save: (Boolean) -> Unit) {
         findViewById<MaterialSwitch>(id).apply {
             isChecked = initial
@@ -379,9 +381,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.expandedPreviewSwitch).visibility = if (hasButton) View.VISIBLE else View.GONE
         editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = expandedPreview), size, cutouts)
 
-        findViewById<TextView>(R.id.serviceStatus).text =
-            if (Settings.canDrawOverlays(this)) "✅ 重ねて表示が許可されています（閉じると自動で出ます）"
-            else "⚠️「他のアプリの上に重ねて表示」で FlipCover を許可してください（下のボタン）"
+        findViewById<TextView>(R.id.serviceStatus).text = "閉じたら自動で出す方法は「全般」にあります"
         findViewById<TextView>(R.id.displayInfo).text = displayInfo()
     }
 
