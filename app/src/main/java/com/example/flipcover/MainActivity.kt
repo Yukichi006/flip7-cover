@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (!go) return false
         CoverActivity.open(this)
-        finish()
+        finishAndRemoveTask()
         return true
     }
 

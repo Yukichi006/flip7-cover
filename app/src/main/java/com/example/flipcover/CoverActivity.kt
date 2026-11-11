@@ -8,6 +8,8 @@ import android.content.SharedPreferences
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -15,6 +17,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.Toast
+import java.lang.ref.WeakReference
 
 /**
  * カバー画面の全画面表示（時計・アプリのボタン・ウィジェット・電池・ライト）。
@@ -27,7 +30,7 @@ import android.widget.Toast
  * - ロック中でも出る（[setShowWhenLocked]）ので、一度開けば、カバー画面が消えて点き直してもこの画面が出る
  * - アプリのボタンを押すと、そのアプリをカバー画面で開く。アプリを閉じる（戻る）と、この画面に戻る
  * - ダブルタップで閉じる
- * - 端末を開いてメイン画面に移されたら、自分で閉じる
+ * - 端末が開かれたら、自分で閉じる（次に閉じたときに、また新しく出る）
  */
 class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
     private lateinit var prefs: Prefs
@@ -44,21 +47,43 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         window.setDecorFitsSystemWindows(false)
         build()
         prefs.registerListener(this)
+        // 閉じるたびに新しく出すので、前のものが残っていれば片付ける
+        current?.get()?.takeIf { it !== this }?.finishAndRemoveTask()
+        current = WeakReference(this)
+        // 端末が開かれたら（メイン画面が点いたら）自分で閉じる
+        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
     }
 
     override fun onDestroy() {
+        runCatching { getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener) }
+        if (current?.get() === this) current = null
         prefs.unregisterListener(this)
         super.onDestroy()
+    }
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) { closeIfOpened() }
+    }
+
+    /**
+     * 端末が開かれていたら（メイン画面が点いていたら）、この画面を閉じる。閉じたら true。
+     * カバー画面用の表示なので、開いたときにメイン画面へ移されて残らないようにする。次に閉じたときに、また新しく出る。
+     */
+    private fun closeIfOpened(): Boolean {
+        if (isFinishing || isDestroyed) return true
+        val main = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+        if (main?.state != Display.STATE_ON) return false
+        CoverLog.add(this, "開かれたので、カバー画面の表示を閉じる：${CoverLog.states(this)}")
+        finishAndRemoveTask()
+        return true
     }
 
     override fun onStart() {
         super.onStart()
         CoverLog.add(this, "カバー画面の表示が出た：id=${runCatching { display?.displayId }.getOrNull()}、${CoverLog.states(this)}")
-        // 端末を開いたときに、この画面がメイン画面へ移されることがある。カバー画面用の表示なので閉じる
-        if (runCatching { display?.displayId }.getOrNull() == Display.DEFAULT_DISPLAY && !folded(this)) {
-            finish()
-            return
-        }
+        if (closeIfOpened()) return
         // 表示している間だけ、ウィジェットの更新（残高の変化など）を受け取る
         if (prefs.widgetIds.isNotEmpty()) runCatching { WidgetHost.get(this).startListening() }
     }
@@ -85,7 +110,7 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                finish()
+                finishAndRemoveTask()
                 return true
             }
         })
@@ -116,8 +141,14 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         }
 
         /** カバー画面でこの画面を開くための呼び出し（カバー画面が見つからなければ、いまの画面で開く）。 */
+        /** いま出ているカバー画面の表示（新しく出すときに、前のものを片付けるため）。 */
+        private var current: WeakReference<CoverActivity>? = null
+
+        // 「別のまとまり（タスク）として必ず新しく作る」という指定を付ける。これがないと、設定画面と同じまとまりに
+        // 入れられてしまい、カバー画面を指定しても、設定画面のあるメイン画面のほうに出てしまう
         fun intent(context: Context): Intent =
-            Intent(context, CoverActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent(context, CoverActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
 
         fun options(context: Context): Bundle? {
             val dm = context.getSystemService(DisplayManager::class.java) ?: return null
