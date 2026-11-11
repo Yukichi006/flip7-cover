@@ -258,6 +258,18 @@
                         android:text="アプリを選ぶ" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/traceSwitch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="アプリのアイコンをなぞった刺繍にする（オフならジャンルのアイコン）" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/traceColorSwitch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="アイコンの色の糸で縫う（オフなら生成りの糸）" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/launcherSwitch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -301,6 +313,12 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="ウィジェットを外す" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/widgetSingleColumnSwitch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="すべて 1 列に並べる（横長のウィジェットが半分の幅になるとき）" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/widgetButtonSwitch"

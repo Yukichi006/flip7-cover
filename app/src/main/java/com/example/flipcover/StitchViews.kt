@@ -326,8 +326,14 @@ object StitchShapes {
     }
 }
 
-/** ステッチの見た目のアプリアイコン：フェルトのワッペンに、ジャンルの刺繍アイコンと、その下に小さくアプリ名。 */
-class StitchAppIcon(context: Context, private val genre: Genre, private val label: String) : View(context) {
+/** ステッチの見た目のアプリアイコン：フェルトのワッペンに、刺繍のアイコン（アプリのアイコンをなぞったものか、ジャンルのもの）と、その下に小さくアプリ名。 */
+class StitchAppIcon(
+    context: Context,
+    private val genre: Genre,
+    private val label: String,
+    /** あれば、ジャンルのアイコンの代わりに、このアプリのアイコンをなぞった刺繍を縫う（できるまではジャンルのアイコン）。 */
+    private val traced: IconApp? = null,
+) : View(context) {
     private val rect = RectF()
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Stitch.THREAD
@@ -345,7 +351,13 @@ class StitchAppIcon(context: Context, private val genre: Genre, private val labe
         val labelH = text.textSize * 1.25f
         val s = (min(width - inner * 2, height - inner * 2 - labelH)).toInt().coerceAtLeast(8)
         val top = (height - s - labelH) / 2f
-        canvas.drawBitmap(GenreIcons.bitmap(genre, s), (width - s) / 2f, top, null)
+        val icon = traced?.let { app ->
+            StitchIcons.cached(app, s) ?: run {
+                StitchIcons.load(context, app, s) { invalidate() }
+                null
+            }
+        } ?: GenreIcons.bitmap(genre, s)
+        canvas.drawBitmap(icon, (width - s) / 2f, top, null)
         // 長い名前は、少しだけ文字を小さくし、それでも入らなければ末尾を「…」にする
         val avail = width - inner * 1.4f
         val base = text.textSize

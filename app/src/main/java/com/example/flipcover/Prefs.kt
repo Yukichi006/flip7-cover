@@ -47,6 +47,21 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("useLauncher", true)
         set(v) = sp.edit().putBoolean("useLauncher", v).apply()
 
+    /** ステッチの見た目で、アプリのアイコンをなぞった刺繍にする（FlipHome と同じ）。オフならジャンルのアイコン。 */
+    var traceIcons: Boolean
+        get() = sp.getBoolean("traceIcons", true)
+        set(v) = sp.edit().putBoolean("traceIcons", v).apply()
+
+    /** なぞった刺繍を、アイコンの色の糸で縫う。オフなら生成りの糸だけで縫う。 */
+    var traceColored: Boolean
+        get() = sp.getBoolean("traceColored", true)
+        set(v) = sp.edit().putBoolean("traceColored", v).apply()
+
+    /** ウィジェットを 2 列にせず、すべて 1 つで 1 段にする（横長と見分けられなかったウィジェット用）。 */
+    var widgetSingleColumn: Boolean
+        get() = sp.getBoolean("widgetSingleColumn", false)
+        set(v) = sp.edit().putBoolean("widgetSingleColumn", v).apply()
+
     var launcherStyle: LauncherStyle
         get() = runCatching { LauncherStyle.valueOf(sp.getString("launcherStyle", null)!!) }
             .getOrDefault(LauncherStyle.DOTS)

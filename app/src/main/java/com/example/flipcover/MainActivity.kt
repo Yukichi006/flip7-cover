@@ -109,6 +109,9 @@ class MainActivity : AppCompatActivity() {
         updateStyleControls()
         findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
         bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
+        bindSwitch(R.id.traceSwitch, prefs.traceIcons) { prefs.traceIcons = it }
+        bindSwitch(R.id.traceColorSwitch, prefs.traceColored) { prefs.traceColored = it }
+        bindSwitch(R.id.widgetSingleColumnSwitch, prefs.widgetSingleColumn) { prefs.widgetSingleColumn = it }
         bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
         findViewById<Button>(R.id.launcherStyle).setOnClickListener {
             pickButtonStyle("ボタンのデザイン", prefs.launcherStyle) { prefs.launcherStyle = it }
@@ -391,6 +394,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
+        // アイコンをなぞる設定は、ステッチの見た目のときだけ出す
+        findViewById<View>(R.id.traceSwitch).visibility = if (prefs.stitch) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.traceColorSwitch).visibility = if (prefs.stitch && prefs.traceIcons) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.launcherStyle).apply {
             text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
             visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
