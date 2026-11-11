@@ -149,7 +149,8 @@ class MainActivity : AppCompatActivity() {
 
     /** メイン画面が消えた・カバー画面が点いた、などの変化があったら、閉じたかを確かめる。 */
     private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) {}
+        // カバー画面は、閉じた少しあとに現れることがある（記録で確認）ので、現れたときにも確かめる
+        override fun onDisplayAdded(displayId: Int) { goCover("カバー画面が現れたとき", always = false) }
         override fun onDisplayRemoved(displayId: Int) {}
         override fun onDisplayChanged(displayId: Int) { goCover("画面の点き方が変わったとき", always = false) }
     }

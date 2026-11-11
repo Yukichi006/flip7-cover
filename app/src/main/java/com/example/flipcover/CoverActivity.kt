@@ -74,7 +74,10 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
     private fun closeIfOpened(): Boolean {
         if (isFinishing || isDestroyed) return true
         val main = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-        if (main?.state != Display.STATE_ON) return false
+        // 開いた直後は、メイン画面がまだ点ききっていないうちに、この画面がメイン画面へ移されることがある（記録で確認）。
+        // メイン画面に移されていたら、点き方にかかわらず閉じる
+        val moved = runCatching { display?.displayId }.getOrNull() == Display.DEFAULT_DISPLAY
+        if (!moved && main?.state != Display.STATE_ON) return false
         CoverLog.add(this, "開かれたので、カバー画面の表示を閉じる：${CoverLog.states(this)}")
         finishAndRemoveTask()
         return true
