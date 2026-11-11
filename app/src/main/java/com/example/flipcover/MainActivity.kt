@@ -1,142 +1,60 @@
 package com.example.flipcover
 
-import android.Manifest
-import android.appwidget.AppWidgetManager
-import android.appwidget.AppWidgetProviderInfo
-import android.content.ComponentName
+import android.app.Activity
 import android.content.Intent
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.TypedValue
 import android.view.Display
-import android.view.View
-import android.widget.Button
+import android.view.Gravity
+import android.view.WindowInsets
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.color.MaterialColors
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.materialswitch.MaterialSwitch
-import com.google.android.material.slider.Slider
 
-class MainActivity : AppCompatActivity() {
-    private lateinit var prefs: Prefs
-    private lateinit var editor: PreviewEditor
+/**
+ * FlipCover のアイコンから開く画面。
+ *
+ * - 端末が閉じている間に開かれたとき（Galaxy のルーチンが「閉じたら FlipCover を開く」を実行したとき）と、
+ *   カバー画面で開かれたときは、すぐにカバー画面の表示（[CoverActivity]）を出して、自分は閉じる
+ * - 開いた端末のメイン画面で開かれたときは、使い方（ルーチンの作り方）と、うまく出ないときの記録を見せる
+ *
+ * 7.0.0 から、時計やアプリの配置は、カバー画面を長押しして、その場で変える（この画面では変えない）。
+ */
+class MainActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
+    private var log: TextView? = null
 
-    /** プレビューで、ボタンを開いたときの様子を見せる（保存しない、画面だけの切り替え）。 */
-    private var expandedPreview = false
-
-    /** Bluetooth 機器の電池残量を読むための許可を求める。 */
-    private val askBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) toast("許可されなかったため、本体の残量だけを表示します")
-        refresh()
+    /** メイン画面が消えた・カバー画面が現れた、などの変化があったら、閉じたかを確かめる。 */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        // カバー画面は、閉じた少しあとに現れることがあるので、現れたときにも確かめる
+        override fun onDisplayAdded(displayId: Int) { goCover("カバー画面が現れたとき", always = false) }
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) { goCover("画面の点き方が変わったとき", always = false) }
     }
-
-    /** 左の列で選んでいるカテゴリ（左の列の項目の id）。 */
-    private var category = R.id.navGeneral
-
-    /** 左の列の項目と、選んだときに右に出す設定のまとまり。 */
-    private val sections = mapOf(
-        R.id.navGeneral to R.id.sectionGeneral,
-        R.id.navClock to R.id.sectionClock,
-        R.id.navApps to R.id.sectionApps,
-        R.id.navWidgets to R.id.sectionWidgets,
-        R.id.navBattery to R.id.sectionBattery,
-        R.id.navTorch to R.id.sectionTorch,
-    )
-
-    /** 選んでいる途中のウィジェットの番号（使用の許可や初期設定の画面から戻るまで）。 */
-    private var pendingWidgetId = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // カバー画面で開かれたときと、閉じている間に開かれたとき（Galaxy のルーチンが「閉じたら FlipCover を開く」を
-        // 実行したときなど）は、設定ではなく、カバー画面の表示（時計やアプリのボタン）を出す
+        Diagnostics.install(this)
         if (goCover("開かれたとき")) return
         // ルーチンは閉じた瞬間に FlipCover を開くので、そのときはまだ画面が切り替わる途中のことがある。
         // このあと画面の点き方が変わったときと、少し待ったあとにも確かめる
-        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, handler)
+        getSystemService(DisplayManager::class.java)!!.registerDisplayListener(displayListener, handler)
         for (ms in longArrayOf(300, 1000, 2500)) handler.postDelayed({ goCover("${ms}ミリ秒後") }, ms)
-        setContentView(R.layout.activity_main)
-        prefs = Prefs(this)
-        pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET, -1) ?: -1
-        category = savedInstanceState?.getInt(KEY_CATEGORY, category)?.takeIf { it in sections } ?: category
-        sections.keys.forEach { nav -> findViewById<View>(nav).setOnClickListener { selectCategory(nav) } }
-        selectCategory(category)
-        editor = PreviewEditor(findViewById(R.id.preview), prefs) { refresh() }
-        findViewById<Button>(R.id.resetLayout).setOnClickListener { prefs.resetLayout(); refresh() }
-
-        findViewById<Button>(R.id.openRoutines).setOnClickListener { openRoutines() }
-        findViewById<MaterialSwitch>(R.id.clockSwitch).apply {
-            isChecked = prefs.showClock
-            setOnCheckedChangeListener { _, v -> prefs.showClock = v; refresh() }
-        }
-        bindSwitch(R.id.digitalSwitch, prefs.showDigital) { prefs.showDigital = it }
-        findViewById<MaterialSwitch>(R.id.stitchSwitch).apply {
-            isChecked = prefs.stitch
-            setOnCheckedChangeListener { _, v ->
-                prefs.stitch = v
-                updateStyleControls()
-                refresh()
-            }
-        }
-
-        val glowLabel = findViewById<TextView>(R.id.glowLabel)
-        findViewById<Slider>(R.id.glowSlider).apply {
-            value = prefs.glow.coerceIn(valueFrom, valueTo)
-            glowLabel.text = glowText(value)
-            setLabelFormatter { glowText(it) }
-            addOnChangeListener { _, v, _ -> glowLabel.text = glowText(v) }
-            addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
-                override fun onStartTrackingTouch(slider: Slider) {}
-                override fun onStopTrackingTouch(slider: Slider) {
-                    prefs.glow = slider.value
-                    refresh()
-                }
-            })
-        }
-        findViewById<MaterialSwitch>(R.id.backdropSwitch).apply {
-            isChecked = prefs.clockBackdrop
-            setOnCheckedChangeListener { _, v -> prefs.clockBackdrop = v; refresh() }
-        }
-        updateStyleControls()
-        findViewById<Button>(R.id.pickApps).setOnClickListener { pickApps() }
-        bindSwitch(R.id.launcherSwitch, prefs.useLauncher) { prefs.useLauncher = it }
-        bindSwitch(R.id.traceSwitch, prefs.traceIcons) { prefs.traceIcons = it }
-        bindSwitch(R.id.traceColorSwitch, prefs.traceColored) { prefs.traceColored = it }
-        bindSwitch(R.id.widgetSingleColumnSwitch, prefs.widgetSingleColumn) { prefs.widgetSingleColumn = it }
-        bindSwitch(R.id.expandedPreviewSwitch, expandedPreview) { expandedPreview = it }
-        findViewById<Button>(R.id.launcherStyle).setOnClickListener {
-            pickButtonStyle("ボタンのデザイン", prefs.launcherStyle) { prefs.launcherStyle = it }
-        }
-        bindSwitch(R.id.torchSwitch, prefs.showTorch) { prefs.showTorch = it }
-        bindSwitch(R.id.batterySwitch, prefs.showBattery) { prefs.showBattery = it }
-        findViewById<Button>(R.id.allowBluetooth).setOnClickListener {
-            askBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
-        }
-        findViewById<Button>(R.id.bluetoothDiagnose).setOnClickListener { showBluetoothDiagnosis() }
-        findViewById<Button>(R.id.pickWidget).setOnClickListener { pickWidget() }
-        findViewById<Button>(R.id.removeWidget).setOnClickListener { removeWidget() }
-        bindSwitch(R.id.widgetButtonSwitch, prefs.useWidgetButton) { prefs.useWidgetButton = it }
-        findViewById<Button>(R.id.widgetButtonStyle).setOnClickListener {
-            pickButtonStyle("ウィジェットのボタンのデザイン", prefs.widgetButtonStyle) { prefs.widgetButtonStyle = it }
-        }
+        setContentView(buildGuide())
     }
 
     override fun onResume() {
         super.onResume()
         if (goCover("画面に戻ったとき", always = false)) return
-        refresh()
+        log?.text = logText()
     }
 
-    /** 設定画面を開いたまま閉じたあとで、ルーチンが FlipCover を開いたとき。 */
+    /** 案内の画面を開いたまま閉じたあとで、ルーチンが FlipCover を開いたとき。 */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         goCover("もう一度開かれたとき")
@@ -144,31 +62,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        runCatching { getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener) }
+        runCatching { getSystemService(DisplayManager::class.java)!!.unregisterDisplayListener(displayListener) }
         super.onDestroy()
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-
-    /** メイン画面が消えた・カバー画面が点いた、などの変化があったら、閉じたかを確かめる。 */
-    private val displayListener = object : DisplayManager.DisplayListener {
-        // カバー画面は、閉じた少しあとに現れることがある（記録で確認）ので、現れたときにも確かめる
-        override fun onDisplayAdded(displayId: Int) { goCover("カバー画面が現れたとき", always = false) }
-        override fun onDisplayRemoved(displayId: Int) {}
-        override fun onDisplayChanged(displayId: Int) { goCover("画面の点き方が変わったとき", always = false) }
-    }
-
     /**
-     * カバー画面で開かれているか、端末が閉じていれば、設定画面をやめて、カバー画面の表示を出す。出したら true。
-     * うまく出ないときに調べられるよう、確かめたときの様子を「全般」の下の記録に残す（[timing] は、いつ確かめたか。[always] でなければ、出すときだけ残す）。
+     * カバー画面で開かれているか、端末が閉じていれば、案内の画面をやめて、カバー画面の表示を出す。出したら true。
+     * うまく出ないときに調べられるよう、確かめたときの様子を記録に残す（[timing] は、いつ確かめたか。
+     * [always] でなければ、出すときだけ残す）。
      */
     private fun goCover(timing: String, always: Boolean = true): Boolean {
         if (isFinishing || isDestroyed) return true
-        val onCover = runCatching { display?.displayId }.getOrNull().let { it != null && it != Display.DEFAULT_DISPLAY }
-        val go = onCover || CoverActivity.folded(this)
+        val id = runCatching { display?.displayId }.getOrNull()
+        val go = (id != null && id != Display.DEFAULT_DISPLAY) || CoverActivity.folded(this)
         if (go || always) {
-            val id = runCatching { display?.displayId }.getOrNull()
-            CoverLog.add(this, "$timing：設定画面は id=$id、${CoverLog.states(this)} → ${if (go) "カバー画面に出す" else "設定画面のまま"}")
+            CoverLog.add(this, "$timing：案内の画面は id=$id、${CoverLog.states(this)} → ${if (go) "カバー画面に出す" else "案内の画面のまま"}")
         }
         if (!go) return false
         CoverActivity.open(this)
@@ -176,280 +84,81 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putInt(KEY_PENDING_WIDGET, pendingWidgetId)
-        outState.putInt(KEY_CATEGORY, category)
-    }
+    private fun logText() = CoverLog.text(this)
 
-    /** 左の列で [nav] を選び、右にそのカテゴリの設定だけを出す。 */
-    private fun selectCategory(nav: Int) {
-        category = nav
-        val ripple = TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true) }
-        for ((item, section) in sections) {
-            val selected = item == nav
-            findViewById<View>(section).visibility = if (selected) View.VISIBLE else View.GONE
-            findViewById<TextView>(item).apply {
-                if (selected) {
-                    val pill = MaterialColors.getColor(this, com.google.android.material.R.attr.colorSecondaryContainer)
-                    background = GradientDrawable().apply {
-                        cornerRadius = 24 * resources.displayMetrics.density
-                        setColor(pill)
-                    }
-                    setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSecondaryContainer))
-                    setTypeface(null, Typeface.BOLD)
-                } else {
-                    setBackgroundResource(ripple.resourceId)
-                    setTextColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant))
-                    setTypeface(null, Typeface.NORMAL)
-                }
-            }
+    /** 使い方と記録の画面。 */
+    private fun buildGuide(): ScrollView {
+        val d = resources.displayMetrics.density
+        fun px(v: Float) = (v * d).toInt()
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(px(22f), px(18f), px(22f), px(28f))
         }
-        findViewById<View>(R.id.settingsScroll).scrollTo(0, 0)
-    }
+        fun text(value: String, size: Float, color: Int = Thread.COLOR, bold: Boolean = false, top: Float = 0f) = TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(color)
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+            setLineSpacing(0f, 1.25f)
+            column.addView(this, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(top) })
+        }
+        fun button(label: String, action: () -> Unit) = TextView(this).apply {
+            text = label
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Cloth.BASE)
+            setTypeface(typeface, Typeface.BOLD)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = px(26f).toFloat()
+                setColor(Thread.COLOR)
+            }
+            setOnClickListener { action() }
+            column.addView(this, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(52f)).apply { topMargin = px(14f) })
+        }
+        val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty()
+        text("FlipCover", 26f, bold = true)
+        text("カバー画面用の、黒い布地にステッチのホーム。バージョン $version", 13f, Thread.DIM, top = 2f)
 
-    /**
-     * Bluetooth 機器ごとに、残量をどう読もうとしてどうなったかを表示する（残量が出ないときの原因探し用）。
-     * 開いたときに、つながっている Bluetooth LE 機器へ問い合わせ直し、結果が届くたびに書き換える。
-     */
-    private fun showBluetoothDiagnosis() {
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val text = TextView(this).apply {
+        text("閉じたら自動で出す（最初の 1 回だけ）", 17f, bold = true, top = 26f)
+        text("Galaxy の「モードとルーチン」に、閉じたら FlipCover を開くルーチンを作ります。\n" +
+            "1. 下のボタンで設定を開き、「モードとルーチン」を開く\n" +
+            "2. 「ルーチン」→「＋」\n" +
+            "3. 条件（もし）：「折りたたみの状態」→「完全に閉じた状態」\n" +
+            "4. 実行内容（実行）：「アプリ」→「アプリを起動」→ FlipCover\n" +
+            "5. 保存", 14f, top = 8f)
+        button("設定を開く") {
+            runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+            Toast.makeText(this, "設定の「モードとルーチン」を開いてください", Toast.LENGTH_LONG).show()
+        }
+
+        text("配置を変える", 17f, bold = true, top = 30f)
+        text("カバー画面を長押しすると、その場で変えられます。細かい作業や、ほかのアプリのウィジェットを置くとき（初回は Android の確認が出ます）は、" +
+            "下のボタンから、この大きい画面でも同じように編集できます（文字や部品の大きさの見え方は、カバー画面と少し違います）。", 14f, top = 8f)
+        button("メイン画面で配置を編集する") { CoverActivity.openOnMain(this) }
+
+        text("カバー画面の使い方", 17f, bold = true, top = 30f)
+        text("・左右へスワイプ：ページを移る\n" +
+            "・上へスワイプ：アプリ一覧\n" +
+            "・どこかを長押し：編集モード。空いたマスをタップして、アプリや部品（時計・電池・ライト・巾着・ほかのアプリのウィジェットなど）を置く。" +
+            "ドラッグで移動、右下のつまみで大きさ、× で外す\n" +
+            "・編集モードの「…」：ページを足す、列の数、糸の太さなどの設定\n" +
+            "・今日の予定は、空いたマス →「部品」→「アプリのウィジェット」で、カレンダーの予定の一覧を置く\n" +
+            "・端末を開くと自動で閉じ、次に閉じたときにまた出る", 14f, top = 8f)
+
+        text("閉じても出ないときの記録（新しい順）", 17f, bold = true, top = 30f)
+        log = text(logText(), 11.5f, Thread.DIM, top = 8f).apply {
+            typeface = Typeface.MONOSPACE
             setTextIsSelectable(true)
-            textSize = 12f
-            setPadding(pad, pad, pad, pad)
-            text = BatteryView.diagnose(this@MainActivity, force = true)
         }
-        val update: () -> Unit = { text.text = BatteryView.diagnose(this, force = false) }
-        BleBattery.addListener(update)
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Bluetooth 機器の診断")
-            .setView(ScrollView(this).apply { addView(text) })
-            .setPositiveButton("閉じる", null)
-            .setOnDismissListener { BleBattery.removeListener(update) }
-            .show()
-    }
-
-    private fun widgetLabel(id: Int) =
-        AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.loadLabel(packageManager) ?: "（見つかりません）"
-
-    /** 置いているウィジェットから 1 つ選んで外す。 */
-    private fun removeWidget() {
-        val ids = prefs.widgetIds
-        MaterialAlertDialogBuilder(this)
-            .setTitle("外すウィジェット")
-            .setItems(ids.map { widgetLabel(it) }.toTypedArray()) { _, i ->
-                WidgetHost.get(this).deleteAppWidgetId(ids[i])
-                prefs.widgetIds = ids - ids[i]
-                refresh()
+        return ScrollView(this).apply {
+            setBackgroundColor(Cloth.BASE)
+            addView(column)
+            // 上下のバーに重ならないようにする
+            setOnApplyWindowInsetsListener { v, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                v.setPadding(0, bars.top, 0, bars.bottom)
+                insets
             }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    /**
-     * カバー画面に置くウィジェットを選ぶ。
-     * 選んだら、使用の許可（初回だけ確認画面が出る）→ 必要ならウィジェットの初期設定、の順に進める。
-     */
-    private fun pickWidget() {
-        if (prefs.widgetIds.size >= MAX_WIDGETS) {
-            toast("ウィジェットは${MAX_WIDGETS}個までです。先にどれかを外してください")
-            return
         }
-        val am = AppWidgetManager.getInstance(this)
-        val pm = packageManager
-        val providers = am.installedProviders
-            .map { info ->
-                val app = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(info.provider.packageName, 0)) }
-                    .getOrDefault(info.provider.packageName)
-                info to "$app：${info.loadLabel(pm)}"
-            }
-            .sortedBy { it.second.lowercase() }
-        if (providers.isEmpty()) {
-            toast("置けるウィジェットが見つかりませんでした")
-            return
-        }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("カバー画面に置くウィジェット")
-            .setItems(providers.map { it.second }.toTypedArray()) { _, i ->
-                val info = providers[i].first
-                val id = WidgetHost.get(this).allocateAppWidgetId()
-                pendingWidgetId = id
-                if (am.bindAppWidgetIdIfAllowed(id, info.provider)) {
-                    configureWidget()
-                } else {
-                    @Suppress("DEPRECATION")
-                    startActivityForResult(
-                        Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-                            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider),
-                        REQ_BIND_WIDGET,
-                    )
-                }
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    /** 初期設定が必要なウィジェットなら、その画面を開く。不要ならそのまま置く。 */
-    private fun configureWidget() {
-        val id = pendingWidgetId
-        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
-        val optional = info != null &&
-            (info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL) != 0
-        if (info?.configure != null && !optional) {
-            runCatching {
-                WidgetHost.get(this).startAppWidgetConfigureActivityForResult(this, id, 0, REQ_CONFIGURE_WIDGET, null)
-            }.onFailure { finishWidget() }
-        } else {
-            finishWidget()
-        }
-    }
-
-    /** 選んだウィジェットを、並びの最後に足す。 */
-    private fun finishWidget() {
-        prefs.widgetIds = prefs.widgetIds + pendingWidgetId
-        pendingWidgetId = -1
-        refresh()
-    }
-
-    private fun cancelWidget() {
-        if (pendingWidgetId != -1) WidgetHost.get(this).deleteAppWidgetId(pendingWidgetId)
-        pendingWidgetId = -1
-    }
-
-    @Deprecated("ウィジェットの許可・初期設定の画面からの戻りを受け取るため")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        @Suppress("DEPRECATION")
-        super.onActivityResult(requestCode, resultCode, data)
-        if (pendingWidgetId == -1) return
-        when (requestCode) {
-            REQ_BIND_WIDGET -> if (resultCode == RESULT_OK) configureWidget() else cancelWidget()
-            REQ_CONFIGURE_WIDGET -> if (resultCode == RESULT_OK) finishWidget() else cancelWidget()
-        }
-    }
-
-    /** 設定アプリを開く（そこから「モードとルーチン」を開いてもらう）。 */
-    private fun openRoutines() {
-        runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
-        Toast.makeText(this, "設定の「モードとルーチン」を開いてください", Toast.LENGTH_LONG).show()
-    }
-
-    private fun bindSwitch(id: Int, initial: Boolean, save: (Boolean) -> Unit) {
-        findViewById<MaterialSwitch>(id).apply {
-            isChecked = initial
-            setOnCheckedChangeListener { _, v -> save(v); refresh() }
-        }
-    }
-
-    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-
-    private fun glowText(v: Float) = "光の強さ（扇形・残像）: ${(v * 100).toInt()}%"
-
-    /** ステッチの見た目では使わない設定（光の強さ・ぼかし）を隠す。 */
-    private fun updateStyleControls() {
-        val light = if (prefs.stitch) View.GONE else View.VISIBLE
-        findViewById<View>(R.id.glowLabel).visibility = light
-        findViewById<View>(R.id.glowSlider).visibility = light
-        findViewById<View>(R.id.backdropSwitch).visibility = light
-    }
-
-    private fun pickButtonStyle(title: String, current: LauncherStyle, save: (LauncherStyle) -> Unit) {
-        val styles = LauncherStyle.entries
-        MaterialAlertDialogBuilder(this)
-            .setTitle(title)
-            .setSingleChoiceItems(styles.map { it.label }.toTypedArray(), styles.indexOf(current)) { dialog, i ->
-                save(styles[i])
-                refresh()
-                dialog.dismiss()
-            }
-            .show()
-    }
-
-    private fun pickApps() {
-        val pm = packageManager
-        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val candidates = pm.queryIntentActivities(launcher, 0)
-            .filter { it.activityInfo.packageName != packageName }
-            .map { ComponentName(it.activityInfo.packageName, it.activityInfo.name) to it.loadLabel(pm).toString() }
-            .sortedBy { it.second.lowercase() }
-        val current = prefs.apps
-        val checked = BooleanArray(candidates.size) { candidates[it].first in current }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("カバー画面に置くアプリ（最大${MAX_APPS}個）")
-            .setMultiChoiceItems(candidates.map { it.second }.toTypedArray(), checked) { _, i, v -> checked[i] = v }
-            .setPositiveButton("OK") { _, _ ->
-                val selected = candidates.filterIndexed { i, _ -> checked[i] }.map { it.first }
-                // 既に選んでいたアプリの並び順を保ち、新しく選んだものは後ろに足す
-                val ordered = current.filter { it in selected } + selected.filter { it !in current }
-                if (ordered.size > MAX_APPS) {
-                    Toast.makeText(this, "最初の${MAX_APPS}個だけ表示します", Toast.LENGTH_SHORT).show()
-                }
-                prefs.apps = ordered.take(MAX_APPS)
-                refresh()
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun refresh() {
-        // アイコンをなぞる設定は、ステッチの見た目のときだけ出す
-        findViewById<View>(R.id.traceSwitch).visibility = if (prefs.stitch) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.traceColorSwitch).visibility = if (prefs.stitch && prefs.traceIcons) View.VISIBLE else View.GONE
-        findViewById<Button>(R.id.launcherStyle).apply {
-            text = "ボタンのデザイン: ${prefs.launcherStyle.label}"
-            visibility = if (prefs.useLauncher) View.VISIBLE else View.GONE
-        }
-        // Bluetooth 機器の残量は、許可がないときだけ許可のボタンを出す
-        findViewById<View>(R.id.allowBluetooth).visibility =
-            if (prefs.showBattery && !BatteryView.canReadBluetooth(this)) View.VISIBLE else View.GONE
-        val widgetIds = prefs.widgetIds
-        findViewById<TextView>(R.id.widgetLabel).text = widgetIds.joinToString("、") { widgetLabel(it) }.ifEmpty { "なし" }
-        findViewById<View>(R.id.removeWidget).visibility = if (widgetIds.isNotEmpty()) View.VISIBLE else View.GONE
-        findViewById<Button>(R.id.widgetButtonStyle).apply {
-            text = "ボタンのデザイン: ${prefs.widgetButtonStyle.label}"
-            visibility = if (prefs.useWidgetButton) View.VISIBLE else View.GONE
-        }
-        findViewById<TextView>(R.id.appsLabel).text = prefs.apps.mapNotNull { cn ->
-            runCatching { packageManager.getActivityInfo(cn, 0).loadLabel(packageManager) }.getOrNull()
-        }.joinToString("、").ifEmpty { "なし" }
-
-        val cover = CoverContent.findCoverDisplay(getSystemService(DisplayManager::class.java))
-        val size = CoverContent.coverSize(cover)
-        val cutouts = runCatching { cover?.cutout?.boundingRects }.getOrNull().orEmpty()
-        // アプリかウィジェットのどちらかをボタンにまとめているときだけ、開いた配置を見せる切り替えを出す
-        val hasButton = (prefs.useLauncher && prefs.apps.isNotEmpty()) || (prefs.useWidgetButton && widgetIds.isNotEmpty())
-        findViewById<View>(R.id.expandedPreviewSwitch).visibility = if (hasButton) View.VISIBLE else View.GONE
-        editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = expandedPreview), size, cutouts)
-
-        findViewById<TextView>(R.id.serviceStatus).text = "閉じたら自動で出す方法は「全般」にあります"
-        findViewById<TextView>(R.id.displayInfo).text = displayInfo() + "\n\n閉じたら出す仕組みの記録（新しい順）\n" + CoverLog.text(this)
-    }
-
-    private fun displayInfo(): String {
-        val dm = getSystemService(DisplayManager::class.java)
-        val cover = CoverContent.findCoverDisplay(dm)
-        return dm.displays.joinToString("\n") { d ->
-            val mode = d.mode
-            val state = when (d.state) {
-                Display.STATE_ON -> "ON"; Display.STATE_OFF -> "OFF"
-                Display.STATE_DOZE, Display.STATE_DOZE_SUSPEND -> "DOZE"; else -> d.state.toString()
-            }
-            "id=${d.displayId} ${mode.physicalWidth}x${mode.physicalHeight} $state \"${d.name}\"" +
-                if (d.displayId == cover?.displayId) "  ← カバー画面" else ""
-        }.ifEmpty { "なし" } + (if (cover != null && dm.displays.none { it.displayId == cover.displayId })
-            "\nid=${cover.displayId} \"${cover.name}\"  ← カバー画面" else "") +
-            "\nカバー画面の実寸: ${CoverContent.coverSize(cover).let { "${it.width}x${it.height}" }}" +
-            "\n切り欠き: ${runCatching { cover?.cutout?.boundingRects }.getOrNull()?.joinToString().orEmpty().ifEmpty { "取得できず" }}"
-    }
-
-    companion object {
-        private const val MAX_APPS = 16
-        private const val MAX_WIDGETS = 4
-        private const val REQ_BIND_WIDGET = 1
-        private const val REQ_CONFIGURE_WIDGET = 2
-        private const val KEY_PENDING_WIDGET = "pendingWidget"
-        private const val KEY_CATEGORY = "category"
     }
 }

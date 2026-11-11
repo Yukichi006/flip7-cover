@@ -1,6 +1,5 @@
 package com.example.flipcover
 
-import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -24,14 +23,8 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
-/** 刺繍アイコンにするアプリ 1 つ。 */
-class IconApp(val component: ComponentName, val label: String, val updatedAt: Long) {
-    val key: String = component.flattenToString()
-}
-
 /**
- * アプリのアイコンを「糸で縫った刺繍」に作り替える（ホーム画面の FlipHome の「アプリのアイコンをなぞる」と同じ作り方。
- * FlipHome の StitchIcons.kt を移したもの）。
+ * アプリのアイコンを「白い糸で縫った刺繍」に作り替える（アイコンの描き方で「アプリのアイコンをなぞる」を選んだアプリ）。
  *
  * 1. アイコンを小さなマス目に描き、形を読み取る
  *    - 白黒用のアイコン（Android 13 以降のテーマアイコン用）があれば、その形をそのまま使う
@@ -48,9 +41,6 @@ object StitchIcons {
     /** 作り方を変えたら上げる（古い保存済みの絵を使わないようにする）。 */
     private const val RECIPE = 3
 
-    /** 糸の太さ（FlipHome では設定で変えられる。FlipCover では、いちばん太い糸に固定）。 */
-    private const val THREAD_SCALE = 1f
-
     private val memory = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
@@ -61,10 +51,10 @@ object StitchIcons {
     private val pending = HashMap<String, MutableList<(Bitmap) -> Unit>>()
 
     /** 覚えていればすぐに返す。 */
-    fun cached(app: IconApp, size: Int): Bitmap? = memory.get(key(app, size))
+    fun cached(app: AppEntry, size: Int): Bitmap? = memory.get(key(app, size))
 
     /** [app] の刺繍アイコン（一辺 [size] px）を作り、できたらメインスレッドで [done] に渡す。 */
-    fun load(context: Context, app: IconApp, size: Int, done: (Bitmap) -> Unit) {
+    fun load(context: Context, app: AppEntry, size: Int, done: (Bitmap) -> Unit) {
         val key = key(app, size)
         memory.get(key)?.let { done(it); return }
         pending[key]?.let { it += done; return }
@@ -88,17 +78,17 @@ object StitchIcons {
     }
 
     // 糸の太さを変えたら作り直す
-    private fun key(app: IconApp, size: Int) = "${app.key}@${app.updatedAt}:$size:${THREAD_SCALE}:$RECIPE:" + if (colored) "c" else "w"
+    private fun key(app: AppEntry, size: Int) = "${app.key}@${app.updatedAt}:$size:${StitchStyle.scale}:$RECIPE:" + if (colored) "c" else "w"
 
     /** なぞる刺繍を、アイコンの色の糸で縫うか（設定。変えたら作った絵を使い分ける）。 */
     @Volatile var colored = true
 
-    private fun render(context: Context, app: IconApp, size: Int): Bitmap {
-        val icon = runCatching { context.packageManager.getActivityIcon(app.component) }.getOrNull()
+    private fun render(context: Context, app: AppEntry, size: Int): Bitmap {
+        val icon = runCatching { app.info.getIcon(context.resources.displayMetrics.densityDpi) }.getOrNull()
         val contours = icon?.let { traceIcon(it) }.orEmpty()
         if (contours.isEmpty()) return sewLetter(app.label, size)
         // 線ごとに、その線のまわりのアイコンの色の糸で縫う（設定で「生成り」にしていれば、すべて生成り）
-        val colorOf = if (icon != null && colored) colorPicker(icon) else { _: FloatArray -> Stitch.THREAD }
+        val colorOf = if (icon != null && colored) colorPicker(icon) else { _: FloatArray -> Thread.COLOR }
         return sew(contours, size, colorOf)
     }
 
@@ -365,7 +355,7 @@ object StitchIcons {
                 i += step
             }
             val best = weight.indices.maxByOrNull { weight[it] }
-            if (best == null || samples == 0 || weight[best] < samples * 0.08f) Stitch.THREAD
+            if (best == null || samples == 0 || weight[best] < samples * 0.08f) Thread.COLOR
             else {
                 val w = weight[best]
                 threadTone(Color.rgb((sumR[best] / w).toInt(), (sumG[best] / w).toInt(), (sumB[best] / w).toInt()))
@@ -383,7 +373,7 @@ object StitchIcons {
     }
 
     /** 輪郭をアイコンの大きさに合わせて並べ直し、ステッチで縫った絵にする。[colorOf] で線ごとの糸の色を決める。 */
-    private fun sew(raw: List<FloatArray>, size: Int, colorOf: (FloatArray) -> Int = { Stitch.THREAD }): Bitmap {
+    private fun sew(raw: List<FloatArray>, size: Int, colorOf: (FloatArray) -> Int = { Thread.COLOR }): Bitmap {
         // アイコンの外枠（角の丸い四角や丸の輪郭）は縫わない。中の絵があるときだけ外し、その分だけ絵を大きく縫う
         val inner = raw.filterNot { isFrame(it) }
         val source = if (inner.any { length(it) > GRID * 0.08f }) inner else raw
@@ -408,7 +398,7 @@ object StitchIcons {
         // 縫い目（点線）が区間の境目で始まり直さないよう、線の始めからの長さで点線の位置をそろえる
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val len = 0.65f + 0.35f * THREAD_SCALE
+        val len = 0.65f + 0.35f * StitchStyle.scale
         val dash = size * 0.055f * len
         val gap = size * 0.04f * len
         val paints = HashMap<Int, android.graphics.Paint>()
@@ -422,8 +412,8 @@ object StitchIcons {
             while (start < n - 1) {
                 val end = minOf(n - 1, start + chunk)
                 val part = pts.copyOfRange(start * 2, end * 2 + 2)
-                val color = colorOf(part).takeIf { it != Stitch.THREAD } ?: lineColor
-                val base = paints.getOrPut(color) { Stitch.paint(stroke, size * 0.055f, size * 0.04f, color) }
+                val color = colorOf(part).takeIf { it != Thread.COLOR } ?: lineColor
+                val base = paints.getOrPut(color) { stitchPaint(stroke, size * 0.055f, size * 0.04f, color) }
                 val paint = android.graphics.Paint(base).apply {
                     pathEffect = android.graphics.DashPathEffect(floatArrayOf(dash, gap), walked % (dash + gap))
                 }
@@ -485,10 +475,10 @@ object StitchIcons {
         val bounds = android.graphics.Rect()
         text.getTextBounds(letter, 0, letter.length, bounds)
         text.getTextPath(letter, 0, letter.length, size / 2f, size / 2f - bounds.exactCenterY(), path)
-        val stitch = Stitch.paint(size * 0.04f, size * 0.08f, size * 0.06f)
+        val stitch = stitchPaint(size * 0.04f, size * 0.08f, size * 0.06f)
         // 外枠の丸いステッチ
         val r = size * 0.44f
-        canvas.drawRoundRect(RectF(size / 2f - r, size / 2f - r, size / 2f + r, size / 2f + r), r * 0.45f, r * 0.45f, stitch)
+        canvas.drawStitchedRoundRect(RectF(size / 2f - r, size / 2f - r, size / 2f + r, size / 2f + r), r * 0.45f, stitch)
         canvas.drawPath(path, stitch)
         return bitmap
     }

@@ -13,7 +13,7 @@ import android.provider.Telephony
 import android.util.LruCache
 
 /**
- * アプリのジャンルと、その刺繍アイコン（ホーム画面の FlipHome と同じもの。ステッチの見た目で使う）。
+ * アプリのジャンルと、その刺繍アイコン。
  * アイコンは 48×48 のマス目に描いた線画（[path]）を、影つきの点線（ステッチ）で縫って作る。
  * [path] は SVG のパスと同じ書き方（M L H V C S Q Z、小文字は相対）に、円を表す「O 中心x,中心y,半径」を足したもの。
  */
@@ -48,6 +48,8 @@ enum class Genre(val label: String, val path: String) {
     POWER("電気", "M27 6L13 27h10l-3 15 15-22H25z"),
     DOWNLOAD("ダウンロード", "M24 8v22 M15 22l9 9 9-9 M10 38h28"),
     SETTINGS("設定", "O24,24,6 M24 7v6 M24 35v6 M7 24h6 M35 24h6 M12 12l4 4 M32 32l4 4 M36 12l-4 4 M16 32l-4 4"),
+    HOME("家・家族", "M7 23L24 9l17 14 M12 19v20h24V19 M20 39V29h8v10"),
+    STAR("お気に入り", "M24 7l5 11 12 1-9 8 3 12-11-6-11 6 3-12-9-8 12-1z"),
     OTHER("その他", "M10 10h11v11H10z M27 10h11v11H27z M10 27h11v11H10z M27 27h11v11H27z"),
     ;
 
@@ -90,17 +92,18 @@ enum class Genre(val label: String, val path: String) {
         )
 
         /** アプリの名前などから、ジャンルを推し量る。分からなければ [OTHER]。 */
-        fun guess(context: Context, pkg: String, label: String, category: Int): Genre {
+        fun guess(context: Context, app: AppEntry): Genre {
+            val pkg = app.component.packageName
             defaultApps(context)[pkg]?.let { return it }
-            val tokens = (pkg.lowercase().split('.', '_', '-') + label.lowercase().split(' ', '　', '・', '-')).toSet()
-            val haystack = pkg.lowercase() + " " + label.lowercase()
+            val tokens = (pkg.lowercase().split('.', '_', '-') + app.label.lowercase().split(' ', '　', '・', '-')).toSet()
+            val haystack = pkg.lowercase() + " " + app.label.lowercase()
             for ((genre, words) in RULES) {
                 for (w in words) {
                     val hit = if (w.startsWith("=")) w.substring(1) in tokens else w in haystack
                     if (hit) return genre
                 }
             }
-            return when (category) {
+            return when (app.info.applicationInfo.category) {
                 ApplicationInfo.CATEGORY_GAME -> GAME
                 ApplicationInfo.CATEGORY_AUDIO -> MUSIC
                 ApplicationInfo.CATEGORY_VIDEO -> VIDEO
@@ -136,7 +139,7 @@ object GenreIcons {
     private val cache = LruCache<String, Bitmap>(80)
     private val paths = mutableMapOf<Genre, Path>()
 
-    fun bitmap(genre: Genre, size: Int): Bitmap = cache.get("$genre:$size") ?: run {
+    fun bitmap(genre: Genre, size: Int): Bitmap = cache.get("$genre:$size:${StitchStyle.scale}") ?: run {
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val path = Path(path(genre))
@@ -146,8 +149,8 @@ object GenreIcons {
             setScale((size - inset * 2) / 48f, (size - inset * 2) / 48f)
             postTranslate(inset, inset)
         })
-        canvas.drawPath(path, Stitch.paint(size * 0.05f, size * 0.105f, size * 0.075f))
-        bitmap.also { cache.put("$genre:$size", it) }
+        canvas.drawPath(path, stitchPaint(size * 0.05f, size * 0.105f, size * 0.075f))
+        bitmap.also { cache.put("$genre:$size:${StitchStyle.scale}", it) }
     }
 
     private fun path(genre: Genre): Path = paths.getOrPut(genre) { MiniPath.parse(genre.path) }

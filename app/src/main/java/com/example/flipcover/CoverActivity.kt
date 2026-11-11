@@ -1,64 +1,204 @@
 package com.example.flipcover
 
+import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.ActivityOptions
-import android.content.ComponentName
-import android.content.Intent
-import android.content.SharedPreferences
 import android.content.Context
+import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Color
 import android.hardware.display.DisplayManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.provider.Settings
 import android.view.Display
-import android.view.GestureDetector
+import android.view.Gravity
 import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import java.lang.ref.WeakReference
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.max
 
 /**
- * カバー画面の全画面表示（時計・アプリのボタン・ウィジェット・電池・ライト）。
+ * カバー画面の表示。ホーム画面用の FlipHome と同じ作り（FlipHome の HomeActivity を移して、カバー画面用に直したもの）。
+ * 上から、マス目に並べた部品（パッド・巾着・時計・電池・ライト・ウィジェットなど）、ページの点、下段のポケット（最初は隠してある）。
  *
- * 危ない許可（ユーザー補助・他のアプリの上に重ねて表示・常駐）は使わない、ふつうの画面。
- * FlipCover 自身は裏で動き続けず、次のどれかで開かれる：
- * - Galaxy の「モードとルーチン」の「閉じたら FlipCover を開く」（自動）
- * - カバー画面で FlipCover のアイコンを開く
- *
- * - ロック中でも出る（[setShowWhenLocked]）ので、一度開けば、カバー画面が消えて点き直してもこの画面が出る
- * - アプリのボタンを押すと、そのアプリをカバー画面で開く。アプリを閉じる（戻る）と、この画面に戻る
- * - ダブルタップで閉じる
- * - 端末が開かれたら、自分で閉じる（次に閉じたときに、また新しく出る）
+ * - 左右へスワイプ：ページを移る
+ * - 上へスワイプ：アプリ一覧を開く
+ * - どこかを長押し：編集モード（空いたマスをタップして追加、ドラッグで移動、× で外す、右下のつまみで大きさ）
  */
-class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListener {
-    private lateinit var prefs: Prefs
+class CoverActivity : Activity() {
+    private lateinit var repo: AppRepository
+    private lateinit var store: LayoutStore
+    private lateinit var root: HomeRoot
+    private lateinit var column: LinearLayout
+    private lateinit var grid: ModuleGrid
+    private lateinit var dots: PageDots
+    private lateinit var dock: PocketDock
+    private lateinit var drawer: DrawerView
+    private lateinit var banner: View
+    private lateinit var editBar: View
+
+    /** 置こうとしているウィジェット（番号と、置くマス）。許可・初期設定の画面から戻るまで覚えておく。 */
+    private var pendingWidget: Int = -1
+    private var pendingCell: Pair<Int, Int>? = null
+
+    /** めくれるパネルごとに、何枚目の布を出しているか（パネルの部品の番号 → 布の番号）。 */
+    private val bookPages = mutableMapOf<Long, Int>()
+
+    /** 設定のパネルを開いた部品が置かれている盤（ページのマス目、またはめくれるパネルの布）。 */
+    private var activeBoard: Board? = null
+
+    private fun board(): Board = activeBoard ?: store.gridBoard(page)
+
+    /** カバー画面を組み立て終えたか（不具合の記録を見せているときは false）。 */
+    private var ready = false
+
+    /**
+     * 開いた端末のメイン画面で、配置を編集するために開かれたか（案内の画面の「メイン画面で配置を編集する」）。
+     * カバー画面と同じ縦横の比の枠の中に出し、端末が開いていても閉じない。
+     */
+    private var onMain = false
+    private var editing = false
+    private var page = 0
+    private var sheet: Sheet? = null
+    private var popover: FolderPopover? = null
+    private var insetBottom = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        prefs = Prefs(this)
-        // ロック中のカバー画面でも時計を見られるようにする（アプリを開くときは、ふつうにロックの解除を求められる）
-        setShowWhenLocked(true)
-        window.attributes = window.attributes.apply {
-            // カメラ穴の部分まで描画する
-            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        Diagnostics.install(this)
+        onMain = intent?.getBooleanExtra(EXTRA_ON_MAIN, false) == true
+        setupWindow()
+        if (!onMain) {
+            // ロック中のカバー画面でも出す（アプリを開くときは、ふつうにロックの解除を求められる）
+            setShowWhenLocked(true)
+            // 閉じるたびに新しく出すので、前のものが残っていれば片付ける
+            current?.get()?.takeIf { it !== this }?.finishAndRemoveTask()
+            current = WeakReference(this)
+            // 端末が開かれたら（メイン画面が点いたら）自分で閉じる
+            getSystemService(DisplayManager::class.java)!!.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
         }
-        window.setDecorFitsSystemWindows(false)
-        build()
-        prefs.registerListener(this)
-        // 閉じるたびに新しく出すので、前のものが残っていれば片付ける
-        current?.get()?.takeIf { it !== this }?.finishAndRemoveTask()
-        current = WeakReference(this)
-        // 端末が開かれたら（メイン画面が点いたら）自分で閉じる
-        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        // 前回落ちた・固まった記録があれば、まずそれを見せる（カバー画面は組み立てない）
+        if (Diagnostics.showIfAny(this) { recreate() }) return
+        ready = true
+
+        store = LayoutStore(this)
+        StitchStyle.scale = store.thread
+        StitchIcons.colored = store.traceColored
+        repo = AppRepository(this)
+        repo.start()
+        root = HomeRoot(this)
+        column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        grid = ModuleGrid(this).apply {
+            setOnLongClickListener { enterEdit(); true }
+        }
+        wireGrid(grid) { store.gridBoard(page) }
+        dots = PageDots(this) { goToPage(it) }
+        dock = PocketDock(this).apply {
+            setOnLongClickListener { enterEdit(); true }
+            onSlotTap = { i -> showDockSheet(i) }
+            onSlotRemove = { i -> store.setDockSlot(i, null); rebuildHome() }
+        }
+        val side = dpi(6f)
+        // どのページも同じマス目。マスの形はパッドに合わせ（高さは幅の [Thumb.CELL_RATIO] 倍くらい）、行の数は画面の高さから決める
+        grid.autoRowsRatio = Thumb.CELL_RATIO
+        column.addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+            setMargins(side, dpi(4f), side, dpi(6f))
+        })
+        column.addView(dots, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpi(20f)))
+        column.addView(dock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpi(124f)).apply {
+            setMargins(side, 0, side, dpi(4f))
+        })
+        root.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+        editBar = makeEditBar()
+        editBar.visibility = View.GONE
+        root.addView(editBar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dpi(70f), Gravity.TOP).apply {
+            setMargins(dpi(6f), 0, dpi(6f), 0)
+        })
+
+        drawer = DrawerView(this, repo, onMenu = { app, _ -> showAppSettings(app) }, onClose = { closeDrawer() })
+        drawer.visibility = View.GONE
+        root.addView(drawer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+            val ime = insets.getInsets(WindowInsets.Type.ime())
+            // メイン画面で編集するときは、外側の枠がバーを避けるので、中では避けない
+            val top = if (onMain) 0 else bars.top
+            val bottom = if (onMain) 0 else bars.bottom
+            insetBottom = bottom
+            column.setPadding(0, top, 0, bottom)
+            (editBar.layoutParams as FrameLayout.LayoutParams).topMargin = top
+            editBar.requestLayout()
+            drawerInsetTop = top
+            drawerInsetBottom = max(bottom, ime.bottom)
+            drawer.applyInsets(top, if (zipDrawer) 0 else drawerInsetBottom)
+            insets
+        }
+        if (onMain) {
+            // カバー画面と同じ縦横の比の枠に入れて、画面の真ん中に出す（マス目の行の数が、カバー画面と同じになるように）
+            val cover = findCoverDisplay(getSystemService(DisplayManager::class.java)!!)?.mode
+            val ratio = if (cover != null && cover.physicalWidth > 0) cover.physicalHeight.toFloat() / cover.physicalWidth else 1048f / 948f
+            setContentView(AspectBox(this, ratio).apply {
+                setBackgroundColor(Color.BLACK)
+                addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                setOnApplyWindowInsetsListener { v, insets ->
+                    val bars = insets.getInsets(WindowInsets.Type.systemBars())
+                    v.setPadding(0, bars.top, 0, bars.bottom)
+                    insets
+                }
+            })
+        } else setContentView(root)
+
+        repo.addListener {
+            rebuildHome()
+            if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+        }
+        rebuildHome()
     }
 
-    override fun onDestroy() {
-        runCatching { getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener) }
-        if (current?.get() === this) current = null
-        prefs.unregisterListener(this)
-        super.onDestroy()
+    private fun setupWindow() {
+        window.setDecorFitsSystemWindows(false)
+        // カメラ穴の部分まで描く
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = Color.TRANSPARENT
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = Color.TRANSPARENT
+        window.isNavigationBarContrastEnforced = false
+        // 暗い布の上なので、ステータスバーの文字は白にする。
+        // window.insetsController は画面の土台（decorView）ができる前に呼ぶと落ちるので、土台から取る
+        window.decorView.windowInsetsController?.setSystemBarsAppearance(
+            0,
+            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!ready) return
+        refreshModules()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // 上下のバーを隠して、カバー画面いっぱいに出す
+        if (hasFocus && !onMain) window.decorView.windowInsetsController?.apply {
+            hide(WindowInsets.Type.systemBars())
+            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -68,14 +208,14 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
     }
 
     /**
-     * 端末が開かれていたら（メイン画面が点いていたら）、この画面を閉じる。閉じたら true。
-     * カバー画面用の表示なので、開いたときにメイン画面へ移されて残らないようにする。次に閉じたときに、また新しく出る。
+     * 端末が開かれていたら（メイン画面が点いているか、この画面がメイン画面へ移されていたら）、この画面を閉じる。閉じたら true。
+     * カバー画面用の表示なので、開いたときにメイン画面に残らないようにする。次に閉じたときに、また新しく出る。
      */
     private fun closeIfOpened(): Boolean {
+        if (onMain) return false
         if (isFinishing || isDestroyed) return true
-        val main = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-        // 開いた直後は、メイン画面がまだ点ききっていないうちに、この画面がメイン画面へ移されることがある（記録で確認）。
-        // メイン画面に移されていたら、点き方にかかわらず閉じる
+        val main = getSystemService(DisplayManager::class.java)!!.getDisplay(Display.DEFAULT_DISPLAY)
+        // 開いた直後は、メイン画面がまだ点ききっていないうちに、この画面がメイン画面へ移されることがある
         val moved = runCatching { display?.displayId }.getOrNull() == Display.DEFAULT_DISPLAY
         if (!moved && main?.state != Display.STATE_ON) return false
         CoverLog.add(this, "開かれたので、カバー画面の表示を閉じる：${CoverLog.states(this)}")
@@ -85,78 +225,1117 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
 
     override fun onStart() {
         super.onStart()
-        CoverLog.add(this, "カバー画面の表示が出た：id=${runCatching { display?.displayId }.getOrNull()}、${CoverLog.states(this)}")
+        if (!onMain) CoverLog.add(this, "カバー画面の表示が出た：id=${runCatching { display?.displayId }.getOrNull()}、${CoverLog.states(this)}")
         if (closeIfOpened()) return
-        // 表示している間だけ、ウィジェットの更新（残高の変化など）を受け取る
-        if (prefs.widgetIds.isNotEmpty()) runCatching { WidgetHost.get(this).startListening() }
+        // 表示している間だけ、ウィジェットの更新を受け取る
+        runCatching { AppWidgets.host(this).startListening() }
     }
 
     override fun onStop() {
-        runCatching { WidgetHost.get(this).stopListening() }
         super.onStop()
+        runCatching { AppWidgets.host(this).stopListening() }
+        if (ready) popover?.dismiss()
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        // 上下のバーを隠して、カバー画面いっぱいに出す
-        if (hasFocus) window.decorView.windowInsetsController?.apply {
-            hide(WindowInsets.Type.systemBars())
-            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (!ready) return
+        // カバー画面にいるときにホームボタンを押したら、開いているものを閉じて元に戻す
+        popover?.dismiss()
+        sheet?.dismiss()
+        if (editing) exitEdit()
+        if (drawer.visibility == View.VISIBLE) closeDrawer()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (!ready) return
+        when {
+            popover != null -> popover?.dismiss()
+            sheet != null -> sheet?.dismiss()
+            drawer.visibility == View.VISIBLE && drawer.dismissPopover() -> Unit
+            editing -> exitEdit()
+            drawer.visibility == View.VISIBLE -> closeDrawer()
+            // メイン画面で編集しているときは、戻るで案内の画面に戻る
+            onMain -> finish()
+        }
+        // カバー画面そのものは戻るボタンで閉じない
+    }
+
+    override fun onDestroy() {
+        runCatching { getSystemService(DisplayManager::class.java)!!.unregisterDisplayListener(displayListener) }
+        if (current?.get() === this) current = null
+        if (ready) repo.stop()
+        super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (!ready) return
+        refreshModules()
+    }
+
+    // ------------------------------------------------------------------
+    // カバー画面の組み立て
+    // ------------------------------------------------------------------
+
+    private var peelFrom = PeelFrom.DEFAULT
+
+    /** マス目に、編集モードの操作（空いたマスのタップ・部品のタップ・外す・動かす）をつなぐ。[board] は、その時点の盤を返す。 */
+    private fun wireGrid(g: ModuleGrid, board: () -> Board) {
+        g.onEmptyTap = { c, r -> activeBoard = board(); showCellSheet(c, r) }
+        g.onModuleTap = { m -> activeBoard = board(); showModuleSheet(m) }
+        g.onRemove = { m ->
+            board().remove(m)
+            // ウィジェットを外したら、その番号も返す
+            m[Module.P_WIDGET]?.toIntOrNull()?.let { runCatching { AppWidgets.host(this).deleteAppWidgetId(it) } }
+            rebuildHome()
+        }
+        g.onChange = { new ->
+            val b = board()
+            val old = b.modules().firstOrNull { it.id == new.id }
+            // めくれるパネルの大きさを変えたら、中のアプリを並べ直す
+            b.replace(if (old != null && new.type == ModuleType.BOOK) store.reflowBook(old, new) else new)
+            rebuildHome()
         }
     }
 
-    /** 設定画面で変えたら、すぐに作り直す。 */
-    override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) = build()
-
-    private fun build() {
-        val view = CoverContent.create(this, prefs, CoverContent.coverSize(display), ::launch)
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent) = true
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                finishAndRemoveTask()
-                return true
+    private fun rebuildHome() {
+        peelFrom = store.peel
+        // 0.27 までの配置（片手の画面）を、1 つのマス目の形に移す。行の数はマス目の高さから決まるので、測ってから
+        if (store.needsUnify) {
+            if (grid.height == 0) {
+                grid.post { if (grid.height > 0) rebuildHome() }
+                return
             }
-        })
-        view.setOnTouchListener { _, e -> detector.onTouchEvent(e) }
-        setContentView(view)
+            store.unify(grid.rows)
+        }
+        // 行の数は画面の高さ（と列の数）で決まる。変わっていたら覚え直す
+        if (grid.height > 0 && store.home.rows != grid.rows) store.setGrid(store.home.cols, grid.rows)
+        val home = store.home
+        page = page.coerceIn(0, home.pages.size - 1)
+        grid.configure(home.cols, home.rows)
+        fill(grid, store.modules(page), inPatches = true)
+        dots.count = home.pages.size
+        dots.current = page
+        dots.visibility = if (home.pages.size > 1) View.VISIBLE else View.GONE
+        rebuildDock(home)
+        grid.editing = editing
+        // 列の数を変えたときは、測り直したあとの行の数で並べ直す
+        grid.post { if (grid.height > 0 && store.home.rows != grid.rows) rebuildHome() }
     }
 
-    /** アプリを、この画面と同じ画面（カバー画面）で開く。閉じれば、この画面に戻る。 */
-    private fun launch(component: ComponentName) {
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(component)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-        val options = ActivityOptions.makeBasic().apply { display?.let { setLaunchDisplayId(it.displayId) } }
-        runCatching { startActivity(intent, options.toBundle()) }
-            .onFailure { Toast.makeText(this, "起動できませんでした: ${it.message}", Toast.LENGTH_LONG).show() }
+    /** 下段のポケット（どのページでも同じ中身）。 */
+    private fun rebuildDock(home: Home) {
+        dock.visibility = if (home.pocket) View.VISIBLE else View.GONE
+        // 口のファスナー：右へ引ききると、アプリ一覧が開く。ファスナーの帯の分だけ、ポケットを高くする
+        val zip = store.dockZip
+        if ((dock.zipper != null) != zip) dock.zipper = if (zip) ZipperTrack(dock, zipLink) else null
+        val h = dpi(if (zip) 138f else 124f)
+        if (dock.layoutParams.height != h) dock.layoutParams = dock.layoutParams.apply { height = h }
+        dock.setCells(home.dock.map { key ->
+            if (key == LayoutStore.DRAWER_KEY) DrawerButton(this, onOpen = { openDrawer() }, onLongPress = { enterEdit() })
+            else key?.let { repo.find(it) }?.let { app -> PadView(this, app, repo, framed = false, labelMode = store.padLabel) { enterEdit() } }
+        })
+        dock.editing = editing
+    }
+
+    /** マス目 [g] に、[modules] の部品を並べる。 */
+    private fun fill(g: ModuleGrid, modules: List<Module>, inPatches: Boolean = false) {
+        g.removeAllViews()
+        for (m in modules) {
+            val view = viewFor(m, inPatches) ?: continue
+            g.addModule(view, m)
+        }
+        g.editing = editing
+    }
+
+    /** 縫い付けメモ [m]。書き足し・済み・外すは、その場で保存する（ページは作り直さない）。 */
+    private fun pinBoardView(m: Module): View {
+        val onPage = page
+        fun save(list: List<PinTask>) {
+            val board = store.gridBoard(onPage)
+            val cur = board.modules().firstOrNull { it.id == m.id } ?: return
+            board.replace(cur.with(Module.P_TASKS, PinTask.toJson(list)))
+        }
+        lateinit var view: PinBoardView
+        view = PinBoardView(this, PinTask.parse(m[Module.P_TASKS]), ::save) {
+            if (editing) return@PinBoardView
+            openSheet("やることを留める") { s ->
+                s.setTabs(emptyList(), 0) {}
+                s.setBody(taskInput(this) { text, keepOpen ->
+                    val cur = store.gridBoard(onPage).modules().firstOrNull { it.id == m.id } ?: return@taskInput
+                    val list = listOf(PinTask(text)) + PinTask.parse(cur[Module.P_TASKS])
+                    save(list)
+                    view.setTasks(list, pinnedNew = true)
+                    if (!keepOpen) closeSheet()
+                })
+            }
+        }
+        view.isClickable = true
+        return view
+    }
+
+    /** めくれるパネル [m]：今の布と、その下の次の布。角をめくりきると次の布になる。中のマス目は、パネルの大きさ（マスの数）。 */
+    private fun bookView(m: Module): View {
+        val sheets = m.sheets
+        val count = sheets.size
+        val idx = (bookPages[m.id] ?: 0).coerceIn(0, count - 1)
+        val onPage = page
+        fun sheetFor(i: Int): SheetView {
+            val g = ModuleGrid(this).apply { setOnLongClickListener { enterEdit(); true } }
+            g.configure(m.w, m.h)
+            fill(g, sheets[i].modules)
+            if (i == idx) wireGrid(g) { store.bookBoard(onPage, m.id, idx) }
+            return SheetView(this, g)
+        }
+        return BookPanel(this, store.bookPeel) {
+            bookPages[m.id] = (idx + 1) % count
+            turnBook(m)
+        }.apply { setSheets(sheetFor(idx), if (count > 1) sheetFor((idx + 1) % count) else null, idx, count) }
+    }
+
+    /**
+     * めくれるパネル [m] をめくりきったら、そのパネルだけを次の布で作り直し、新しい布が縫い上がるように出す
+     * （ほかの部品は作り直さない）。
+     */
+    private fun turnBook(m: Module) {
+        val i = (0 until grid.childCount).indexOfFirst { (grid.getChildAt(it).layoutParams as? ModuleGrid.Params)?.module?.id == m.id }
+        if (i < 0) { rebuildHome(); return }
+        val current = store.modules(page).firstOrNull { it.id == m.id } ?: m
+        val view = bookView(current)
+        view.setOnLongClickListener { enterEdit(); true }
+        grid.removeViewAt(i)
+        grid.addView(view, i, ModuleGrid.Params(current))
+        Sewing.start(listOf(view), grid, root, fade = false)
+    }
+
+    /** 部品 [m] の画面の部品を作る。[inPatch] なら、布のない部品（時計・カレンダー・天気など）をワッペンに載せる。 */
+    private fun viewFor(m: Module, inPatch: Boolean = false): View? {
+        val view: View = when (m.type) {
+            ModuleType.CLOCK -> ClockView(this)
+            ModuleType.ANALOG -> AnalogClockView(this)
+            ModuleType.WIDGET -> widgetView(m) ?: return null
+            ModuleType.BOOK -> bookView(m)
+            ModuleType.ALARM -> NextAlarmView(this)
+            ModuleType.TASKS -> pinBoardView(m)
+            ModuleType.TORCH -> TorchSwitch(this)
+            ModuleType.BATTERY -> BatteryPatch(this)
+            // アンインストールされたアプリ（や一時的に使えない仕事用のアプリ）は表示しないだけで、配置は残す
+            ModuleType.APP -> m[Module.P_APP]?.let { repo.find(it) }?.let { app ->
+                PadView(this, app, repo, second = m[Module.P_LONG_APP]?.let { repo.find(it) }, peel = peelFrom, labelMode = padLabelFor(m)) { enterEdit() }
+            } ?: return null
+            ModuleType.FOLDER -> FolderPouch(this, m[Module.P_NAME] ?: "フォルダ",
+                m.folderApps.mapNotNull { repo.find(it)?.component?.packageName },
+                onOpen = { v -> showFolder(m, v) }, onLongPress = { enterEdit() })
+            ModuleType.TIME -> TimeView(this, Align.parse(m[Module.P_ALIGN], "mr"), m[Module.P_SECONDS] == "1")
+            ModuleType.DATE -> DateView(this, Align.parse(m[Module.P_ALIGN], "ml"), m[Module.P_STYLE])
+            ModuleType.TITLE -> TitleView(this, m[Module.P_TEXT] ?: "${page + 1}", Align.parse(m[Module.P_ALIGN], "bl"))
+            ModuleType.CALENDAR -> DotCalendarView(this, m[Module.P_MONDAY] == "1",
+                hasSwipe = { !m[Module.gestureKey(it)].isNullOrEmpty() },
+                onSwipe = { dir -> runGesture(m[Module.gestureKey(dir)]) })
+            ModuleType.SLIDER -> sliderFor(m)
+        }
+        if (m.type !in setOf(ModuleType.APP, ModuleType.FOLDER, ModuleType.SLIDER)) view.setOnLongClickListener { enterEdit(); true }
+        val framed = isFramed(m, inPatch)
+        // ワッペンの絵を自分で描く部品は、枠を描くかどうかだけ伝える（描かなければ中身が大きくなる）
+        (view as? PatchView)?.framed = framed
+        (view as? ZipperFader)?.framed = framed
+        // ほかのアプリのウィジェットは、大きさはそのままで、縁の少し内側をステッチで縫う
+        if (view is WidgetCell) { view.stitched = framed; return view }
+        if ((m.type !in BARE && m.type != ModuleType.WIDGET) || !framed) return view
+        // 布のない部品（時計・カレンダー・天気など）は、ワッペンに載せる
+        return PatchLayout(this, PatchPainter.Shape.Round(22f)).apply {
+            val p = dpi(10f)
+            setPadding(p, p, p, p)
+            addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            setOnLongClickListener { enterEdit(); true }
+        }
+    }
+
+    /** パッド [m] のアプリ名の出し方（パッドで選んでいればそれ、なければ全体の設定）。 */
+    private fun padLabelFor(m: Module): PadLabel = when (m[Module.P_LABEL]) {
+        "hide" -> PadLabel.NONE
+        "show" -> store.padLabel.takeIf { it != PadLabel.NONE } ?: PadLabel.TWO
+        else -> store.padLabel
+    }
+
+    /**
+     * 部品 [m] にステッチの枠を付けるか。自分で選んでいればそれ。選んでいなければ、
+     * 布のない部品は片手の画面（[inPatch]）でだけ付け、ワッペンの部品はいつも付ける。
+     */
+    private fun isFramed(m: Module, inPatch: Boolean): Boolean =
+        m[Module.P_FRAME]?.let { it == "1" } ?: when (m.type) {
+            in BARE -> inPatch
+            // ほかのアプリのウィジェットは、最初は枠なし（選べば、フェルトのワッペンに載せて縁を縫う）
+            ModuleType.WIDGET -> false
+            else -> true
+        }
+
+    /** 枠を付け外しできる部品なら、その切り替えのボタン。 */
+    private fun frameItem(m: Module): Pair<String, () -> Unit>? {
+        if (m.type !in FRAMEABLE) return null
+        val now = isFramed(m, true)
+        val label = when {
+            m.type == ModuleType.WIDGET && now -> "縁のステッチをなくす"
+            m.type == ModuleType.WIDGET -> "縁にステッチを縫う（大きさはそのまま）"
+            now -> "ステッチの枠をなくす（中身を大きく）"
+            else -> "ステッチの枠を付ける"
+        }
+        return label to {
+            board().replace(m.with(Module.P_FRAME, if (now) "0" else "1"))
+            done()
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // アプリのウィジェット
+    // ------------------------------------------------------------------
+
+    /** ウィジェットの部品の画面。ウィジェットのアプリが消えていれば null。 */
+    private fun widgetView(m: Module): View? {
+        val id = m[Module.P_WIDGET]?.toIntOrNull() ?: return null
+        val info = android.appwidget.AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return null
+        val host = runCatching { AppWidgets.host(this).createView(this, id, info) }.getOrNull() ?: return null
+        return WidgetCell(this, info.minWidth, info.minHeight) { enterEdit() }.apply {
+            addView(host, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+    }
+
+    /** マス ([col], [row]) に置くウィジェットを選ぶ。 */
+    private fun pickWidget(col: Int, row: Int) {
+        val am = android.appwidget.AppWidgetManager.getInstance(this)
+        val pm = packageManager
+        val providers = am.installedProviders.map { info ->
+            val app = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(info.provider.packageName, 0)) }.getOrDefault(info.provider.packageName)
+            info to "$app：${info.loadLabel(pm)}"
+        }.sortedBy { it.second.lowercase() }
+        if (providers.isEmpty()) {
+            toast("置けるウィジェットが見つかりませんでした")
+            return
+        }
+        sheet?.setBody(actionList(this, providers.map { (info, label) ->
+            label to {
+                val id = AppWidgets.host(this).allocateAppWidgetId()
+                pendingWidget = id
+                pendingCell = col to row
+                closeSheet()
+                if (am.bindAppWidgetIdIfAllowed(id, info.provider)) configureWidget()
+                else {
+                    // 初めてのときは、Android が「FlipCover にウィジェットを許可するか」を確認する
+                    @Suppress("DEPRECATION")
+                    runCatching {
+                        startActivityForResult(Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_BIND)
+                            .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                            .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider), REQUEST_BIND_WIDGET)
+                    }.onFailure { cancelWidget() }
+                }
+            }
+        }, note = "置いたあとは、右下のつまみで大きさを変えられます。"))
+    }
+
+    /** 初期設定が必要なウィジェットなら、その画面を開く。不要ならそのまま置く。 */
+    private fun configureWidget() {
+        val id = pendingWidget
+        val info = android.appwidget.AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
+        val optional = info != null && (info.widgetFeatures and android.appwidget.AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL) != 0
+        if (info?.configure != null && !optional) {
+            runCatching { AppWidgets.host(this).startAppWidgetConfigureActivityForResult(this, id, 0, REQUEST_CONFIGURE_WIDGET, null) }
+                .onFailure { finishWidget() }
+        } else finishWidget()
+    }
+
+    /** 選んだウィジェットを、覚えておいたマスに置く（入らなければ、入るところまで小さくする）。 */
+    private fun finishWidget() {
+        val id = pendingWidget
+        val (col, row) = pendingCell ?: (0 to 0)
+        pendingWidget = -1
+        pendingCell = null
+        val placed = board().placeAt(ModuleType.WIDGET, col, row, mapOf(Module.P_WIDGET to id.toString()))
+        if (placed == null) {
+            runCatching { AppWidgets.host(this).deleteAppWidgetId(id) }
+            toast("ここには置けません")
+        }
+        rebuildHome()
+    }
+
+    private fun cancelWidget() {
+        if (pendingWidget != -1) runCatching { AppWidgets.host(this).deleteAppWidgetId(pendingWidget) }
+        pendingWidget = -1
+        pendingCell = null
+    }
+
+    /** 部品 [m] が置いてある盤（今のページのマス目）。 */
+    private fun boardHolding(m: Module): Board {
+        return store.gridBoard(page)
+    }
+
+    private fun refreshModules() {
+        for (g in listOf(grid)) for (i in 0 until g.childCount) {
+            when (val v = g.getChildAt(i)) {
+                is BatteryPatch -> v.refresh()
+            }
+        }
+    }
+
+    /** 部品に割り当てた動作を行う（通知を開く・アプリ一覧を開く・アプリを開く）。 */
+    private fun runGesture(action: String?) {
+        when {
+            action.isNullOrEmpty() -> {}
+            action == "drawer" -> openDrawer()
+            action.startsWith("app:") -> repo.find(action.removePrefix("app:"))?.let { repo.launch(it, grid) }
+        }
+    }
+
+    private fun gestureLabel(action: String?): String = when {
+        action.isNullOrEmpty() -> "なし"
+        action == "drawer" -> "アプリ一覧を開く"
+        action.startsWith("app:") -> repo.find(action.removePrefix("app:"))?.let { repo.label(it) } ?: "（使えないアプリ）"
+        else -> "なし"
+    }
+
+    private fun sliderFor(m: Module): View {
+        val function = m[Module.P_FUNCTION] ?: "volume"
+        val label = if (function == "app") "APP" else "VOL"
+        return ZipperFader(this, function, label,
+            onEnd = { top -> (if (top) m[Module.P_TOP_APP] else m[Module.P_BOTTOM_APP])?.let { repo.find(it) }?.let { repo.launch(it, grid) } },
+            needPermission = {},
+        ).apply { setOnLongClickListener { enterEdit(); true } }
+    }
+
+    // ------------------------------------------------------------------
+    // ページ
+    // ------------------------------------------------------------------
+
+    /** [target] のページへ移る。今のページを横にすべらせて片付け、新しいページを縫い上げ、巾着を少し揺らす。 */
+    private fun goToPage(target: Int) {
+        val count = store.home.pages.size
+        val t = target.coerceIn(0, count - 1)
+        if (t == page) {
+            grid.animate().translationX(0f).setDuration(160).start()
+            return
+        }
+        val dir = if (t > page) -1 else 1
+        val w = grid.width.toFloat()
+        grid.animate().translationX(dir * w).setDuration(150).withEndAction {
+            page = t
+            rebuildHome()
+            grid.translationX = -dir * w
+            grid.translationX = 0f
+            // 新しいページの部品を、ミシンで縫い上げるように出す
+            Sewing.start((0 until grid.childCount).map { grid.getChildAt(it) } + dock, grid, root)
+            swayPouches(dir)
+        }.start()
+    }
+
+    /** ページを移ると、巾着が慣性で少し揺れる。 */
+    private fun swayPouches(dir: Int) {
+        for (i in 0 until grid.childCount) {
+            val pouch = grid.getChildAt(i) as? FolderPouch ?: continue
+            android.animation.ValueAnimator.ofFloat(0f, -dir * 12f, dir * 6f, -dir * 2f, 0f).apply {
+                duration = 900
+                addUpdateListener { pouch.sway = it.animatedValue as Float }
+                start()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 巾着（フォルダ）
+    // ------------------------------------------------------------------
+
+    private fun showFolder(m: Module, anchor: View) {
+        popover?.dismiss()
+        val apps = m.folderApps.mapNotNull { repo.find(it) }
+        if (apps.isEmpty()) {
+            toast("巾着は空です。長押しして編集モードから、アプリを入れてください")
+            return
+        }
+        val pads = apps.map { app -> PadView(this, app, repo, framed = false) { } }
+        val p = FolderPopover(this, m[Module.P_NAME] ?: "フォルダ", anchor, pads) { popover = null }
+        popover = p
+        p.show(root)
+    }
+
+    // ------------------------------------------------------------------
+    // 編集モード
+    // ------------------------------------------------------------------
+
+    private fun enterEdit() {
+        if (editing) return
+        editing = true
+        popover?.dismiss()
+        root.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        grid.editing = true
+        dock.editing = true
+        rebuildHome()
+        editBar.visibility = View.VISIBLE
+        // 前に下へ寄せていたら、下に出す
+        editBar.post { editBar.translationY = if (getSharedPreferences("home", 0).getBoolean("editBarBottom", false)) editBarBottomShift() else 0f }
+        editBar.alpha = 0f
+        editBar.animate().alpha(1f).setDuration(150).start()
+    }
+
+    private fun exitEdit() {
+        editing = false
+        grid.editing = false
+        dock.editing = false
+        rebuildHome()
+        editBar.animate().alpha(0f).setDuration(150).withEndAction { editBar.visibility = View.GONE }.start()
+    }
+
+    /** 編集モードの間、画面の上に出す帯。説明と「…」「完了」。 */
+    private fun makeEditBar(): View = PatchLayout(this, PatchPainter.Shape.Round(40f)).apply {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        row.addView(TextView(context).apply {
+            text = "空いたマスをタップして追加\nこの帯は上下にずらせます"
+            setTextColor(Thread.COLOR)
+            textSize = 11.5f
+            setShadowLayer(dp(0.6f), 0f, dp(1f), Thread.SHADOW)
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(Pill(context, "…").apply { setOnClickListener { showEditMenu(this) } },
+            LinearLayout.LayoutParams(dpi(56f), dpi(46f)))
+        row.addView(Pill(context, "完了", selected = true).apply { setOnClickListener { exitEdit() } },
+            LinearLayout.LayoutParams(dpi(86f), dpi(46f)))
+        addView(row, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        // 帯そのものへのタップは、後ろのマス目に通さない
+        isClickable = true
+        val p = dpi(9f)
+        setPadding(dpi(22f), p, p, p)
+        // 帯をつまんで上下にずらせる（上のマスに部品を置くときなど）。離すと、上か下の近いほうに寄る
+        var downY = 0f
+        var startT = 0f
+        var dragging = false
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { downY = ev.rawY; startT = v.translationY; dragging = false }
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = ev.rawY - downY
+                    if (!dragging && abs(dy) > slop) dragging = true
+                    if (dragging) v.translationY = (startT + dy).coerceIn(0f, editBarBottomShift())
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (dragging) {
+                    val bottom = v.translationY > editBarBottomShift() / 2
+                    getSharedPreferences("home", 0).edit().putBoolean("editBarBottom", bottom).apply()
+                    v.animate().translationY(if (bottom) editBarBottomShift() else 0f).setDuration(160).start()
+                }
+            }
+            dragging
+        }
+    }
+
+    /** 編集の帯を下に寄せたときに、どれだけ下げるか（ページの点のすぐ上まで）。 */
+    private fun editBarBottomShift(): Float {
+        val loc = IntArray(2); dots.getLocationInWindow(loc)
+        val r = IntArray(2); root.getLocationInWindow(r)
+        val dotsTop = loc[1] - r[1]
+        return (dotsTop - editBar.height - editBar.top - dpi(4f)).toFloat().coerceAtLeast(0f)
+    }
+
+    /**
+     * 編集モードの「…」：設定を、まとまりごとに分けた一覧で出す。選ぶものが多い設定は、押すと選ぶ一覧に切り替わる（「‹ 戻る」で戻る）。
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun showEditMenu(anchorView: View): Unit = openSheet("カバー画面の設定") { s ->
+        s.setTabs(emptyList(), 0) {}
+        fun back() = showEditMenu(anchorView)
+        /** [title] の選ぶ一覧に切り替える。 */
+        fun choose(title: String, items: List<Pair<String, () -> Unit>>) {
+            s.setTitle(title)
+            s.setBody(actionList(this, listOf("‹ 戻る" to { back() }) + items))
+        }
+        val home = store.home
+        val me = this@CoverActivity
+        val sections = mutableListOf<Pair<String, List<Pair<String, () -> Unit>>>>()
+
+        sections += "ページ" to listOfNotNull(
+            "ページを足す" to {
+                page = store.addPage(page)
+                done()
+                toast("${page + 1} ページ目を足しました。空いたマスをタップして、部品やウィジェットを置けます")
+            },
+            if (home.pages.size > 1) "このページを外す\n${page + 1} ページ目と、そこに置いたもの" to {
+                confirm("${page + 1} ページ目と、そこに置いたものを外します。") {
+                    store.modules(page).mapNotNull { it[Module.P_WIDGET]?.toIntOrNull() }
+                        .forEach { runCatching { AppWidgets.host(me).deleteAppWidgetId(it) } }
+                    store.removePage(page)
+                    page = (page - 1).coerceAtLeast(0)
+                    done()
+                }
+            } else null,
+            "横の列の数\nいま ${home.cols} 列" to {
+                choose("横の列の数", (LayoutStore.MIN_COLS..LayoutStore.MAX_COLS).map { c -> "$c 列" to { store.setGrid(c, home.rows); done() } })
+            },
+        )
+
+        sections += "下段のポケット" to listOfNotNull(
+            (if (home.pocket) "下段のポケットを隠す" else "下段のポケットを出す") to { store.setPocket(!home.pocket); done() },
+            if (home.pocket) (if (store.dockZip) "ファスナー（アプリ一覧）を外す" else "ファスナー（アプリ一覧）を付ける") to {
+                store.dockZip = !store.dockZip; done()
+            } else null,
+        )
+
+        sections += "めくる・縫う" to listOf(
+            "めくれるパネルをめくる向き\nいま：${store.bookPeel.label}" to {
+                choose("めくれるパネルをめくる向き", PeelFrom.entries.map { p -> p.label to { store.bookPeel = p; done() } })
+            },
+            "パッドの裏地をめくる向き\nいま：${store.peel.label}" to {
+                choose("パッドの裏地をめくる向き", PeelFrom.entries.map { p -> p.label to { store.peel = p; done() } })
+            },
+            "糸の太さ\nいま：${StitchStyle.label(store.thread)}" to {
+                // 糸はあちこちで使っているので、画面をまるごと作り直す
+                choose("糸の太さ", StitchStyle.CHOICES.map { (scale, name) -> name to { store.thread = scale; closeSheet(); recreate() } })
+            },
+        )
+
+        sections += "アイコンと名前" to listOf(
+            "なぞる刺繍の糸\nいま：${if (store.traceColored) "アイコンの色" else "生成り"}" to {
+                choose("なぞる刺繍の糸", listOf("アイコンの色" to true, "生成り" to false).map { (label, colored) ->
+                    label to {
+                        store.traceColored = colored
+                        StitchIcons.colored = colored
+                        done()
+                        if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+                    }
+                })
+            },
+            "パッドのアプリ名\nいま：${store.padLabel.label}" to {
+                choose("パッドのアプリ名", PadLabel.entries.map { l -> l.label to { store.padLabel = l; done() } })
+            },
+        )
+
+        sections += "そのほか" to listOf(
+            "アプリ一覧を開く" to { closeSheet(); exitEdit(); openDrawer() },
+            "FlipCover を閉じる\n次に端末を閉じたときに、また出る" to { closeSheet(); finishAndRemoveTask() },
+        )
+        s.setBody(sectionedList(this, sections, note = "FlipCover ${versionName()}"))
+    }
+
+    private fun confirm(message: String, ok: () -> Unit) {
+        android.app.AlertDialog.Builder(this)
+            .setMessage(message)
+            .setPositiveButton("消す") { _, _ -> ok() }
+            .setNegativeButton("やめる", null)
+            .show()
+    }
+
+    // ------------------------------------------------------------------
+    // 設定のパネル（ボトムシート）
+    // ------------------------------------------------------------------
+
+    private fun openSheet(title: String, build: (Sheet) -> Unit) {
+        sheet?.dismiss()
+        val s = Sheet(this, insetBottom) { if (sheet != null && sheet?.parent == null) sheet = null }
+        s.setTitle(title)
+        build(s)
+        sheet = s
+        s.show(root)
+    }
+
+    private fun closeSheet() {
+        sheet?.dismiss()
+        sheet = null
+    }
+
+    private fun done() {
+        closeSheet()
+        rebuildHome()
+    }
+
+    /** 空いたマスをタップしたとき：アプリか部品を選んで置く。 */
+    private fun showCellSheet(col: Int, row: Int) = openSheet("マスに置く") { s ->
+        fun appTab() = s.setBody(AppPicker(this, repo) { app ->
+            board().placeAt(ModuleType.APP, col, row, mapOf(Module.P_APP to app.key))
+            done()
+        })
+        fun moduleTab() = s.setBody(modulePicker(this) { type ->
+            if (type == ModuleType.WIDGET) {
+                pickWidget(col, row)
+                return@modulePicker
+            }
+            val placed = board().placeAt(type, col, row, if (type == ModuleType.FOLDER) mapOf(Module.P_NAME to "フォルダ") else emptyMap())
+            if (placed == null) {
+                toast("ここには置けません")
+                done()
+            } else if (type == ModuleType.FOLDER) {
+                rebuildHome()
+                folderSheet(placed)
+            } else {
+                done()
+            }
+        })
+        s.setTabs(listOf("アプリ", "部品"), 0) { if (it == 0) appTab() else moduleTab() }
+        appTab()
+    }
+
+    /** 置いてある部品をタップしたとき。 */
+    private fun showModuleSheet(m: Module) {
+        when (m.type) {
+            ModuleType.APP -> padSheet(m)
+            ModuleType.FOLDER -> folderSheet(m)
+            ModuleType.BOOK -> bookSheet(m)
+            ModuleType.TIME, ModuleType.DATE, ModuleType.TITLE, ModuleType.CALENDAR, ModuleType.SLIDER -> instrumentSheet(m)
+            else -> openSheet(m.type.label) { s ->
+                s.setTabs(emptyList(), 0) {}
+                s.setBody(actionList(this, listOfNotNull(frameItem(m)) + pageMoveItems(m) + listOf("外す" to { board().remove(m); done() }),
+                    note = "大きさは右下のつまみ、場所はドラッグで変えられます。"))
+            }
+        }
+    }
+
+    /** 時刻・日付・見出し・カレンダー・フェーダー・再生中の曲の設定。 */
+    private fun instrumentSheet(m: Module) = openSheet(m.type.label) { s ->
+        s.setTabs(emptyList(), 0) {}
+        fun save(new: Module) { board().replace(new); done() }
+        fun alignItem(default: String) = "寄せ方（いま：${Align.CHOICES.firstOrNull { it.first == (m[Module.P_ALIGN] ?: default) }?.second ?: "真ん中"}）" to {
+            s.setBody(actionList(this, Align.CHOICES.map { (key, name) -> name to { save(m.with(Module.P_ALIGN, key)) } }))
+        }
+        fun appChooser(key: String) = { s.setBody(AppPicker(this, repo) { app -> save(m.with(key, app.key)) }) }
+        val items: List<Pair<String, () -> Unit>> = when (m.type) {
+            ModuleType.TIME -> listOf(
+                (if (m[Module.P_SECONDS] == "1") "秒を隠す" else "秒を出す") to { save(m.with(Module.P_SECONDS, if (m[Module.P_SECONDS] == "1") null else "1")) },
+                alignItem("mr"),
+            )
+            ModuleType.DATE -> listOf(
+                (if (m[Module.P_STYLE] == "dot") "「11月2日（月）」の形にする" else "「11.02 MON」の形にする") to {
+                    save(m.with(Module.P_STYLE, if (m[Module.P_STYLE] == "dot") null else "dot"))
+                },
+                alignItem("ml"),
+            )
+            ModuleType.TITLE -> listOf(
+                "文字を変える（いま：${m[Module.P_TEXT] ?: "${page + 1}"}）" to {
+                    s.setBody(renameBody(this, m[Module.P_TEXT] ?: "", null) { t -> save(m.with(Module.P_TEXT, t?.trim()?.ifEmpty { null })) })
+                },
+                alignItem("bl"),
+            )
+            ModuleType.CALENDAR -> listOf(
+                (if (m[Module.P_MONDAY] == "1") "週の始まりを日曜にする" else "週の始まりを月曜にする") to {
+                    save(m.with(Module.P_MONDAY, if (m[Module.P_MONDAY] == "1") null else "1"))
+                },
+            ) + listOf("up" to "上", "down" to "下", "left" to "左", "right" to "右").map { (dir, name) ->
+                "${name}へスワイプ（いま：${gestureLabel(m[Module.gestureKey(dir)])}）" to {
+                    val key = Module.gestureKey(dir)
+                    s.setBody(actionList(this, listOf(
+                        "なし" to { save(m.with(key, null)) },
+                        "アプリ一覧を開く" to { save(m.with(key, "drawer")) },
+                        "アプリを開く…" to { s.setBody(AppPicker(this, repo) { app -> save(m.with(key, "app:${app.key}")) }) },
+                    )))
+                }
+            }
+            ModuleType.SLIDER -> {
+                val f = m[Module.P_FUNCTION] ?: "volume"
+                listOf(
+                    "音量にする" to { save(m.with(Module.P_FUNCTION, "volume")) },
+                    "アプリを開くバネにする" to { save(m.with(Module.P_FUNCTION, "app")) },
+                ).filter { !it.first.startsWith(if (f == "app") "アプリ" else "音量") } + if (f == "app") listOf(
+                    "上端で開くアプリ（いま：${m[Module.P_TOP_APP]?.let { repo.find(it) }?.let { repo.label(it) } ?: "なし"}）" to appChooser(Module.P_TOP_APP),
+                    "下端で開くアプリ（いま：${m[Module.P_BOTTOM_APP]?.let { repo.find(it) }?.let { repo.label(it) } ?: "なし"}）" to appChooser(Module.P_BOTTOM_APP),
+                ) else emptyList()
+            }
+            else -> emptyList()
+        }
+        s.setBody(actionList(this, items + listOfNotNull(frameItem(m)) + pageMoveItems(m) + listOf("外す" to { board().remove(m); done() }),
+            note = "大きさは右下のつまみ、場所はドラッグで変えられます。"))
+    }
+
+    /** 別のページへ移す項目（ページが 2 つ以上あるとき）。 */
+    private fun pageMoveItems(m: Module): List<Pair<String, () -> Unit>> {
+        // めくれるパネルの中のアプリは、ページを移せない（パネルごと移す）
+        if (activeBoard?.inBook == true) return emptyList()
+        val count = store.home.pages.size
+        return (0 until count).filter { it != page }.map { p ->
+            "${p + 1} ページ目へ移す" to {
+                if (store.moveToPage(page, m, p)) done() else toast("${p + 1} ページ目に空きがありません")
+            }
+        }
+    }
+
+    /** アプリのパッドの設定。 */
+    private fun padSheet(m: Module) {
+        val app = m[Module.P_APP]?.let { repo.find(it) } ?: return
+        val second = m[Module.P_LONG_APP]?.let { repo.find(it) }
+        openSheet(repo.label(app)) { s ->
+            s.setTabs(emptyList(), 0) {}
+            s.setBody(actionList(this, listOf(
+                "アプリを変える" to {
+                    s.setBody(AppPicker(this, repo) { new -> board().replace(m.with(Module.P_APP, new.key)); done() })
+                },
+                (if (second == null) "裏地のアプリを決める" else "裏地のアプリ（いま：${repo.label(second)}）") to {
+                    s.setBody(AppPicker(this, repo) { new -> board().replace(m.with(Module.P_LONG_APP, new.key)); done() })
+                },
+            ) + listOfNotNull(
+                second?.let { "裏地のアプリをやめる" to { board().replace(m.with(Module.P_LONG_APP, null)); done() } },
+                // このパッドだけ、名前を隠す・出す
+                if (padLabelFor(m) == PadLabel.NONE) "このパッドのアプリ名を出す" to { board().replace(m.with(Module.P_LABEL, "show")); done() }
+                else "このパッドのアプリ名を隠す（アイコンを大きく）" to { board().replace(m.with(Module.P_LABEL, "hide")); done() },
+            ) + appItems(app, s) + pageMoveItems(m) + listOf(
+                "外す" to { board().remove(m); done() },
+            ), note = "裏地のアプリを決めると、パッドの端が少しめくれます。そこをつまんでめくると裏地のアプリが見え、めくりきって離すと開きます。めくる向きは「…」→「裏地をめくる向き」で変えられます。"))
+        }
+    }
+
+    /** 名前・アイコン・アプリ情報（パッドと下段で共通）。 */
+    private fun appItems(app: AppEntry, s: Sheet): List<Pair<String, () -> Unit>> = listOf(
+        "名前を変える（いま：${repo.label(app)}）" to {
+            s.setBody(renameBody(this, repo.label(app), app.label.takeIf { store.nameOf(app.key) != null }) { name ->
+                store.setName(app.key, name?.takeIf { it != app.label })
+                done()
+                if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+            })
+        },
+        "アイコンの描き方（いま：${iconModeLabel(app)}）" to {
+            s.setBody(iconModePicker(this, repo, app) { traced -> setIconMode(app, traced) })
+        },
+        "アイコンの絵を変える（いま：${repo.genre(app).label}）" to {
+            s.setBody(genrePicker(this, store.genreOf(app.key)) { g ->
+                store.setGenre(app.key, g)
+                repo.forgetGuesses(app)
+                done()
+                if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+            })
+        },
+        "ジャンル（アプリ一覧の巾着）など、まとめて設定（いま：${repo.shelf(app).label}）" to { showAppSettings(app) },
+        "アプリ情報・アンインストール" to { repo.openDetails(app) },
+    )
+
+    /** めくれるパネルの設定（布を足す・外す、めくる向き、ページを移す、外す）。 */
+    private fun bookSheet(m: Module) {
+        val sheets = m.sheets
+        val idx = (bookPages[m.id] ?: 0).coerceIn(0, sheets.size - 1)
+        openSheet("めくれるパネル（${idx + 1} / ${sheets.size} 枚目）") { s ->
+            s.setTabs(emptyList(), 0) {}
+            s.setBody(actionList(this, listOfNotNull(
+                "布を足す（今の布の次に）" to {
+                    board().replace(m.withSheets(sheets.toMutableList().apply { add(idx + 1, Page(emptyList())) }))
+                    bookPages[m.id] = idx + 1
+                    done()
+                },
+                if (sheets.size > 1) "この布を外す（${idx + 1} 枚目と、中のアプリ）" to {
+                    confirm("${idx + 1} 枚目の布と、そこに置いたアプリを外します。") {
+                        board().replace(m.withSheets(sheets.filterIndexed { i, _ -> i != idx }))
+                        bookPages[m.id] = (idx - 1).coerceAtLeast(0)
+                        done()
+                    }
+                } else null,
+                "めくる向き（いま：${store.bookPeel.label}）" to {
+                    s.setBody(actionList(this, PeelFrom.entries.map { p -> p.label to { store.bookPeel = p; done() } }))
+                },
+            ) + pageMoveItems(m) + listOf("外す（中のアプリも）" to { board().remove(m); done() }),
+                note = "中のアプリは、編集モードで布の上を触って並べ替えます（空いたマスをタップで追加）。大きさは右下のつまみで変えられ、中のマスの数も合わせて変わります。"))
+        }
+    }
+
+    /** アプリを今のページに置く。めくれるパネルがあれば、その今の布（なければ次の布から順に）の空いたマスに入れる。 */
+    private fun addToHome(app: AppEntry): Boolean {
+        val props = mapOf(Module.P_APP to app.key)
+        for (b in store.modules(page).filter { it.type == ModuleType.BOOK }) {
+            val count = b.sheets.size
+            val start = bookPages[b.id] ?: 0
+            for (k in 0 until count) {
+                val i = (start + k) % count
+                if (store.bookBoard(page, b.id, i).add(ModuleType.APP, props) != null) return true
+            }
+        }
+        return store.add(page, ModuleType.APP, props) != null
+    }
+
+    /** 巾着（フォルダ）の設定。 */
+    private fun folderSheet(m: Module) {
+        val name = m[Module.P_NAME] ?: "フォルダ"
+        openSheet("巾着：$name") { s ->
+            s.setTabs(emptyList(), 0) {}
+            s.setBody(actionList(this, listOf(
+                "中のアプリを選ぶ（いま ${m.folderApps.size} 個）" to {
+                    s.setBody(AppMultiPicker(this, repo, m.folderApps) { keys ->
+                        board().replace(m.with(Module.P_APPS, keys.joinToString("\n")))
+                        done()
+                    })
+                },
+                "名前を変える" to {
+                    s.setBody(renameBody(this, name, null) { new ->
+                        board().replace(m.with(Module.P_NAME, new?.trim()?.ifEmpty { null } ?: "フォルダ"))
+                        done()
+                    })
+                },
+            ) + pageMoveItems(m) + listOf("外す" to { board().remove(m); done() }),
+                note = "カバー画面で巾着をタップすると、口が開いて中のアプリが出てきます。"))
+        }
+    }
+
+    /** 下段の枠をタップしたとき。 */
+    private fun showDockSheet(index: Int) {
+        val key = store.home.dock.getOrNull(index)
+        val drawerButton = listOf("アプリ一覧のボタンを置く" to { store.setDockSlot(index, LayoutStore.DRAWER_KEY); done() })
+        if (key == LayoutStore.DRAWER_KEY) {
+            openSheet("アプリ一覧のボタン") { s ->
+                s.setTabs(emptyList(), 0) {}
+                s.setBody(actionList(this, listOf(
+                    "アプリに変える" to { s.setBody(AppPicker(this, repo) { new -> store.setDockSlot(index, new.key); done() }) },
+                    "外す" to { store.setDockSlot(index, null); done() },
+                ), note = "タップすると、アプリ一覧が開きます。"))
+            }
+            return
+        }
+        val app = key?.let { repo.find(it) }
+        if (app == null) {
+            openSheet("下段に置く") { s ->
+                // 「アプリ」と「アプリ一覧のボタン」から選ぶ
+                fun show(tab: Int) = s.setBody(if (tab == 0) AppPicker(this, repo) { picked -> store.setDockSlot(index, picked.key); done() }
+                    else actionList(this, drawerButton, note = "ほかのアプリと同じ大きさのボタンです。タップすると、アプリ一覧が開きます。"))
+                s.setTabs(listOf("アプリ", "アプリ一覧のボタン"), 0) { show(it) }
+                show(0)
+            }
+            return
+        }
+        openSheet(repo.label(app)) { s ->
+            s.setTabs(emptyList(), 0) {}
+            s.setBody(actionList(this, listOf(
+                "アプリを変える" to { s.setBody(AppPicker(this, repo) { new -> store.setDockSlot(index, new.key); done() }) },
+            ) + drawerButton.map { (_, act) -> "アプリ一覧のボタンに変える" to act } + appItems(app, s) + listOf("外す" to { store.setDockSlot(index, null); done() })))
+        }
+    }
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    // ------------------------------------------------------------------
+    // アプリ一覧
+    // ------------------------------------------------------------------
+
+    // ------------------------------------------------------------------
+    // 下段のファスナーと、アプリ一覧の開閉をつなぐ
+    // ------------------------------------------------------------------
+
+    /** アプリ一覧を、下段のファスナーから出しているか（ファスナーの上まで、下からせり上がる形）。 */
+    private var zipDrawer = false
+
+    private val zipLink = object : ZipperTrack.Listener {
+        override fun onZip(value: Float) {
+            if (value <= 0f && !zipDrawer) return
+            if (!zipDrawer) beginZipDrawer()
+            placeZipDrawer(value)
+        }
+
+        override fun onZipSettled(open: Boolean) {
+            if (!zipDrawer) return
+            if (open) {
+                placeZipDrawer(1f)
+            } else {
+                endZipDrawer()
+            }
+        }
+    }
+
+    /** アプリ一覧を切って出す線（画面の中の位置）。ファスナーは隠さない。 */
+    private fun zipLineY(): Int {
+        if (dock.zipper == null) return root.height
+        val loc = IntArray(2); dock.getLocationInWindow(loc)
+        val r = IntArray(2); root.getLocationInWindow(r)
+        // ポケットの上の縁（布の端）の線。アプリ一覧は、ポケットの口の奥から出てくるように、この線で切って出す
+        return (loc[1] - r[1] + dock.mouthY).toInt()
+    }
+
+    /** ファスナーから出すアプリ一覧の用意：ファスナーの上までの大きさにし、下から出す。 */
+    private fun beginZipDrawer() {
+        zipDrawer = true
+        drawer.animate().cancel()
+        drawer.reset()
+        drawer.fromRight = false
+        if (!drawer.searchAtBottom) drawer.searchAtBottom = true
+        val h = zipLineY()
+        drawer.layoutParams = (drawer.layoutParams as FrameLayout.LayoutParams).apply { height = h; gravity = Gravity.TOP }
+        // 下はファスナーが続くので、ナビゲーションバーの分は空けない
+        drawer.applyInsets(drawerInsetTop, 0)
+        drawer.visibility = View.VISIBLE
+        drawer.translationY = h.toFloat()
+        // アプリ一覧を指で下げたら、ファスナーも閉じていく。離したら、近いほうへ
+        drawer.onPull = { f -> dock.zipper?.snapTo(1f - f) }
+        drawer.onPullEnd = { close -> dock.zipper?.let { z -> if (close) z.close() else z.reopen() } }
+    }
+
+    /** 開き具合 [value] に合わせて、アプリ一覧をファスナーの線からせり上げる（線より下は見せない）。 */
+    private fun placeZipDrawer(value: Float) {
+        val h = drawer.layoutParams.height.takeIf { it > 0 } ?: zipLineY()
+        val ty = h * (1f - value)
+        drawer.translationY = ty
+        drawer.clipBounds = android.graphics.Rect(0, 0, root.width, (h - ty).toInt().coerceAtLeast(0))
+    }
+
+    /** ファスナーを閉じきったら、アプリ一覧を片付けて、いつもの大きさに戻す。 */
+    private fun endZipDrawer() {
+        zipDrawer = false
+        drawer.hideKeyboard()
+        drawer.visibility = View.GONE
+        drawer.clipBounds = null
+        drawer.translationY = 0f
+        drawer.onPull = null
+        drawer.onPullEnd = null
+        drawer.layoutParams = (drawer.layoutParams as FrameLayout.LayoutParams).apply { height = FrameLayout.LayoutParams.MATCH_PARENT }
+        drawer.applyInsets(drawerInsetTop, drawerInsetBottom)
+    }
+
+    private var drawerInsetTop = 0
+    private var drawerInsetBottom = 0
+
+    fun openDrawer() {
+        if (zipDrawer) return
+        // 右から出す。検索欄は親指の届く下
+        val side = true
+        drawer.fromRight = side
+        if (drawer.searchAtBottom != side) drawer.searchAtBottom = side
+        if (drawer.visibility != View.VISIBLE) {
+            drawer.reset()
+            drawer.visibility = View.VISIBLE
+            if (side) drawer.translationX = root.width.toFloat() else drawer.translationY = root.height.toFloat()
+        }
+        drawer.animate().translationX(0f).translationY(0f).setDuration(220).withEndAction(null).start()
+    }
+
+    private fun closeDrawer() {
+        // ファスナーから出していたら、ファスナーを閉じる（アプリ一覧もいっしょに沈む）
+        if (zipDrawer) {
+            val z = dock.zipper
+            if (z == null) { endZipDrawer(); return }
+            val h = drawer.layoutParams.height.takeIf { it > 0 } ?: 1
+            // 指で下げていたら、その位置から閉じる
+            z.snapTo(1f - drawer.translationY / h)
+            z.close()
+            return
+        }
+        drawer.hideKeyboard()
+        val a = drawer.animate().setDuration(200)
+        if (drawer.fromRight) a.translationX(root.width.toFloat()) else a.translationY(root.height.toFloat())
+        a.withEndAction { drawer.visibility = View.GONE }.start()
+    }
+
+    /** アプリ一覧でアプリを長押ししたとき。 */
+    /** アプリ一覧でアプリを長押ししたとき：そのアプリの設定（名前・アイコン・ジャンル・置き場所）を 1 枚で。 */
+    private fun showAppSettings(app: AppEntry) {
+        val s = sheet?.takeIf { it.parent != null && it.tag == APP_SETTINGS }
+        if (s != null) {
+            fillAppSettings(s, app)
+            return
+        }
+        openSheet(repo.label(app)) { sh ->
+            sh.tag = APP_SETTINGS
+            sh.setTabs(emptyList(), 0) {}
+            fillAppSettings(sh, app)
+        }
+    }
+
+    private fun fillAppSettings(s: Sheet, app: AppEntry) {
+        s.setTitle(repo.label(app))
+        s.setBody(AppSettingsView(this, repo, store, app,
+            onChanged = {
+                s.setTitle(repo.label(app))
+                rebuildHome()
+                if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+            },
+            onNavigate = { other -> fillAppSettings(s, other) },
+            actions = { placeActions(app, s) }))
+    }
+
+    /** アプリの置き場所などのボタン（パネル／ホーム・下段・アプリ情報）。 */
+    private fun placeActions(app: AppEntry, s: Sheet): List<Pair<String, () -> Unit>> {
+        val items = mutableListOf<Pair<String, () -> Unit>>()
+        val onPage = store.pageOfApp(app.key)
+        if (onPage != null) {
+            items += "カバー画面から外す（${onPage + 1} ページ目）" to {
+                store.removeApp(app.key)
+                rebuildHome()
+                fillAppSettings(s, app)
+            }
+        } else {
+            items += "カバー画面に追加（${page + 1} ページ目）" to {
+                if (addToHome(app)) {
+                    rebuildHome()
+                    toast("${repo.label(app)} をカバー画面に置きました")
+                    fillAppSettings(s, app)
+                } else toast("このページに空いているマスがありません")
+            }
+        }
+        val slots = store.home.dock
+        if (app.key !in slots) {
+            items += "下段に置く…" to {
+                s.setBody(actionList(this, slots.mapIndexed { i, key ->
+                    val now = when (key) {
+                        null -> "空き"
+                        LayoutStore.DRAWER_KEY -> "アプリ一覧のボタン"
+                        else -> repo.find(key)?.let { a -> repo.label(a) } ?: "空き"
+                    }
+                    "${i + 1} 番目（いま：$now）" to { store.setDockSlot(i, app.key); rebuildHome(); fillAppSettings(s, app) }
+                } + listOf("やめる" to { fillAppSettings(s, app) })))
+            }
+        }
+        items += "アプリを開く" to { closeSheet(); repo.launch(app, root) }
+        items += "アプリ情報・アンインストール" to { repo.openDetails(app) }
+        return items
+    }
+
+    private fun iconModeLabel(app: AppEntry) = if (repo.traced(app)) "アプリのアイコンをなぞる" else "ジャンルのアイコン"
+
+    private fun setIconMode(app: AppEntry, traced: Boolean) {
+        store.setIconTraced(app.key, traced)
+        done()
+        if (drawer.visibility == View.VISIBLE) drawer.rebuild()
+    }
+
+    private fun versionName() =
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty()
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_BIND_WIDGET || requestCode == REQUEST_CONFIGURE_WIDGET) {
+            if (pendingWidget == -1) return
+            when {
+                resultCode != RESULT_OK -> cancelWidget()
+                requestCode == REQUEST_BIND_WIDGET -> configureWidget()
+                else -> finishWidget()
+            }
+            return
+        }
     }
 
     companion object {
+        /** いま出ているカバー画面の表示（新しく出すときに、前のものを片付けるため）。 */
+        private var current: WeakReference<CoverActivity>? = null
+
         /**
          * 端末が閉じているか。メイン画面が点いておらず、カバー画面が消えていなければ（点いているか、うっすら表示なら）、
          * 閉じているとみなす。開いたまま画面を消したときは、カバー画面も消えているので、閉じているとはみなさない。
          */
         fun folded(context: Context): Boolean {
             val dm = context.getSystemService(DisplayManager::class.java) ?: return false
-            val cover = CoverContent.findCoverDisplay(dm) ?: return false
+            val cover = findCoverDisplay(dm) ?: return false
             return cover.state != Display.STATE_OFF && dm.getDisplay(Display.DEFAULT_DISPLAY)?.state != Display.STATE_ON
         }
 
-        /** カバー画面でこの画面を開くための呼び出し（カバー画面が見つからなければ、いまの画面で開く）。 */
-        /** いま出ているカバー画面の表示（新しく出すときに、前のものを片付けるため）。 */
-        private var current: WeakReference<CoverActivity>? = null
+        /** Galaxy Z Flip のカバー画面は、ふつう 1 番の画面として見える。なければ、メイン画面以外の画面を探す。 */
+        fun findCoverDisplay(dm: DisplayManager): Display? =
+            dm.getDisplay(1) ?: dm.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
 
-        // 「別のまとまり（タスク）として必ず新しく作る」という指定を付ける。これがないと、設定画面と同じまとまりに
-        // 入れられてしまい、カバー画面を指定しても、設定画面のあるメイン画面のほうに出てしまう
+        // 「別のまとまり（タスク）として必ず新しく作る」という指定を付ける。これがないと、案内の画面と同じまとまりに
+        // 入れられてしまい、カバー画面を指定しても、メイン画面のほうに出てしまう
         fun intent(context: Context): Intent =
             Intent(context, CoverActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
 
         fun options(context: Context): Bundle? {
             val dm = context.getSystemService(DisplayManager::class.java) ?: return null
-            val cover = CoverContent.findCoverDisplay(dm) ?: return null
-            return ActivityOptions.makeBasic().setLaunchDisplayId(cover.displayId).toBundle()
+            val cover = findCoverDisplay(dm) ?: return null
+            return android.app.ActivityOptions.makeBasic().setLaunchDisplayId(cover.displayId).toBundle()
+        }
+
+        private const val EXTRA_ON_MAIN = "onMain"
+
+        /** 開いた端末のメイン画面で、配置を編集するために開く（案内の画面と同じまとまりの中に出す）。 */
+        fun openOnMain(activity: Activity) {
+            activity.startActivity(Intent(activity, CoverActivity::class.java).putExtra(EXTRA_ON_MAIN, true))
         }
 
         /** カバー画面でこの画面を開く。カバー画面を指定して開けなければ、指定なしで開く。 */
@@ -166,6 +1345,186 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
                     CoverLog.add(context, "カバー画面を指定して開けなかった：${it.message}")
                     runCatching { context.startActivity(intent(context)) }
                 }
+        }
+
+        private const val REQUEST_BIND_WIDGET = 41
+        private const val REQUEST_CONFIGURE_WIDGET = 42
+
+        /** 布のない部品（ワッペンに載せるかどうかを選べる）。 */
+        private val BARE = setOf(ModuleType.CLOCK, ModuleType.TIME, ModuleType.DATE, ModuleType.TITLE, ModuleType.CALENDAR)
+
+        /** ステッチの枠を付け外しできる部品。 */
+        private val FRAMEABLE = BARE + setOf(ModuleType.BATTERY, ModuleType.SLIDER, ModuleType.WIDGET, ModuleType.ALARM)
+
+        /** アプリの設定のパネルに付ける目印（前後のアプリへ移るとき、同じパネルの中身だけ替える）。 */
+        private const val APP_SETTINGS = "appSettings"
+    }
+
+    // ------------------------------------------------------------------
+    // 画面全体：布地の背景と、上下左右のスワイプ
+    // ------------------------------------------------------------------
+
+    /**
+     * カバー画面のいちばん外側。布地を敷き、スワイプを拾う。
+     * 上へ：指についてアプリ一覧がせり上がる。下へ：通知を開く。左右へ：ページを移る（マス目が指についてくる）。
+     * 編集モードやパネルを開いている間は、スワイプを拾わない。
+     */
+    private inner class HomeRoot(context: Context) : FrameLayout(context) {
+        private val fabric = Fabric.paint(context, Cloth.BASE)
+        private val seam = context.stitch(1.4f)
+        private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        private var downX = 0f
+        private var downY = 0f
+        private var mode = 0 // 0: まだ, 1: 上へ（一覧）, 2: 下へ（通知）, 3: 左右（ページ）, 4: 最後のページで左へ（右からアプリ一覧）
+        private var velocity: VelocityTracker? = null
+
+        init { setWillNotDraw(false) }
+
+        override fun onDraw(canvas: Canvas) {
+            canvas.drawPaint(fabric)
+            // 画面全体をステッチでぐるりと囲む
+            drawScreenSeam(canvas, seam)
+        }
+
+        private val cameraPaint = android.graphics.Paint().apply { color = 0x66B02A2A }
+
+        /** 編集モードの間、カメラの位置（そこに置いた部品は見えない）を赤く示す。 */
+        override fun dispatchDraw(canvas: Canvas) {
+            super.dispatchDraw(canvas)
+            if (!editing) return
+            val rects = runCatching { rootWindowInsets?.displayCutout?.boundingRects }.getOrNull().orEmpty()
+            for (r in rects) canvas.drawRect(r, cameraPaint)
+        }
+
+        private fun swipesAllowed() = !editing && sheet == null && popover == null &&
+            !(drawer.visibility == View.VISIBLE && drawer.translationY == 0f)
+
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            if (!swipesAllowed()) return false
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = ev.x
+                    downY = ev.y
+                    mode = 0
+                    longPressCancelled = false
+                    AppWidgets.touchClaimed = false
+                    velocity?.recycle()
+                    velocity = VelocityTracker.obtain().also { it.addMovement(ev) }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    velocity?.addMovement(ev)
+                    // 指が少しでも動いたら、下の部品の長押しを取り消す（ゆっくりスワイプしたときに、編集モードに入らないように）
+                    if (!longPressCancelled && hypot(ev.x - downX, ev.y - downY) > slop) {
+                        longPressCancelled = true
+                        cancelLongPresses(this)
+                    }
+                    detect(ev)
+                }
+            }
+            return mode != 0
+        }
+
+        private var longPressCancelled = false
+
+        /** [v] と、その中の部品の長押しの待ち時間を取り消す。 */
+        private fun cancelLongPresses(v: View) {
+            v.cancelLongPress()
+            if (v is WidgetCell) v.cancelPendingLongPress()
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) cancelLongPresses(v.getChildAt(i))
+        }
+
+        /** はっきり動いたら、上・下・左右のどれかを決める。 */
+        private fun detect(ev: MotionEvent) {
+            if (mode != 0) return
+            val dx = ev.x - downX
+            val dy = ev.y - downY
+            // ウィジェットの中の一覧が指を使っているときは、上下の動きはウィジェットに任せる（左右はページの切り替え）
+            if (abs(dy) > slop * 1.5f && abs(dy) > abs(dx) * 1.3f && !AppWidgets.touchClaimed) {
+                mode = if (dy < 0) 1 else 2
+                if (mode == 1) {
+                    drawer.reset()
+                    drawer.fromRight = false
+                    if (!drawer.searchAtBottom) drawer.searchAtBottom = true
+                    drawer.visibility = View.VISIBLE
+                    drawer.translationY = height.toFloat()
+                }
+            } else if (abs(dx) > slop * 1.5f && abs(dx) > abs(dy) * 1.3f) {
+                val last = store.home.pages.size - 1
+                // 左右でページを移る。最後のページでさらに左へスワイプすると、右からアプリ一覧が出てくる
+                if (dx < 0 && page == last) {
+                    mode = 4
+                    drawer.reset()
+                    drawer.fromRight = true
+                    if (!drawer.searchAtBottom) drawer.searchAtBottom = true
+                    drawer.visibility = View.VISIBLE
+                    drawer.translationX = width.toFloat()
+                } else if (store.home.pages.size > 1) {
+                    mode = 3
+                }
+            }
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(ev: MotionEvent): Boolean {
+            if (!swipesAllowed()) return false
+            velocity?.addMovement(ev)
+            val dx = ev.x - downX
+            val dy = ev.y - downY
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    detect(ev)
+                    when (mode) {
+                        1 -> drawer.translationY = (height + dy).coerceIn(0f, height.toFloat())
+                        4 -> drawer.translationX = (width + dx).coerceIn(0f, width.toFloat())
+                        3 -> {
+                            // 端のページでは、それ以上めくれないことが分かるよう重くする
+                            val atEdge = (dx > 0 && page == 0) || (dx < 0 && page == store.home.pages.size - 1)
+                            grid.translationX = if (atEdge) dx * 0.25f else dx
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    velocity?.computeCurrentVelocity(1000)
+                    val vx = velocity?.xVelocity ?: 0f
+                    val vy = velocity?.yVelocity ?: 0f
+                    when (mode) {
+                        1 -> if (-dy > height * 0.15f || vy < -dp(800f)) openDrawer() else closeDrawer()
+                        4 -> if (-dx > width * 0.15f || vx < -dp(700f)) openDrawer() else closeDrawer()
+                        3 -> when {
+                            dx < -width * 0.18f || vx < -dp(700f) -> goToPage(page + 1)
+                            dx > width * 0.18f || vx > dp(700f) -> goToPage(page - 1)
+                            else -> grid.animate().translationX(0f).setDuration(160).start()
+                        }
+                    }
+                    mode = 0
+                }
+            }
+            return true
+        }
+    }
+}
+
+/**
+ * 中の画面を、幅いっぱい・高さは幅の [ratio] 倍（入らなければ入るだけ）にして、真ん中に置く枠。
+ * メイン画面で、カバー画面と同じ縦横の比で配置を編集するときに使う。
+ */
+@SuppressLint("ViewConstructor")
+private class AspectBox(context: Context, private val ratio: Float) : FrameLayout(context) {
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = MeasureSpec.getSize(heightMeasureSpec)
+        val innerW = w - paddingLeft - paddingRight
+        val innerH = minOf(h - paddingTop - paddingBottom, (innerW * ratio).toInt())
+        for (i in 0 until childCount) getChildAt(i).measure(
+            MeasureSpec.makeMeasureSpec(innerW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(innerH, MeasureSpec.EXACTLY))
+        setMeasuredDimension(w, h)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        for (i in 0 until childCount) {
+            val c = getChildAt(i)
+            val top = paddingTop + ((b - t - paddingTop - paddingBottom) - c.measuredHeight) / 2
+            c.layout(paddingLeft, top, paddingLeft + c.measuredWidth, top + c.measuredHeight)
         }
     }
 }

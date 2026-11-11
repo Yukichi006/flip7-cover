@@ -17,11 +17,12 @@
 
     <application
         android:allowBackup="true"
-        android:largeHeap="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.FlipCover">
 
+        <!-- アイコンから開く画面。閉じている間に開かれたら（Galaxy のルーチンなど）カバー画面の表示を出し、
+             開いたメイン画面では、使い方と記録を見せる -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -31,15 +32,15 @@
             </intent-filter>
         </activity>
 
-        <!-- カバー画面の全画面表示（時計・アプリのボタンなど）。ふつうの画面で、重ねて表示・常駐・ユーザー補助は使わない。
-             カバー画面で FlipCover を開いたときと、Galaxy のルーチンが
-             「閉じたら FlipCover を開く」を実行したときに出る。ロック中でも見られ、カバー画面が消えて点き直しても残る -->
+        <!-- カバー画面の表示（マス目に並べた時計・アプリ・ウィジェットなど）。ふつうの画面で、重ねて表示・常駐・ユーザー補助は使わない。
+             カバー画面で FlipCover を開いたときと、Galaxy のルーチンが「閉じたら FlipCover を開く」を実行したときに出る。
+             ロック中でも見られ、カバー画面が消えて点き直しても残る。端末を開くと自分で閉じる -->
         <activity
             android:name=".CoverActivity"
             android:exported="false"
             android:resizeableActivity="true"
             android:showWhenLocked="true"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:windowSoftInputMode="adjustNothing"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboardHidden" />
     </application>
 </manifest>

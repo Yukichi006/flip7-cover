@@ -1,35 +1,13 @@
 <resources>
-    <style name="Theme.FlipCover" parent="Theme.Material3.DayNight.NoActionBar" />
-
-    <!-- 設定画面の見出し -->
-    <style name="FlipCover.Section" parent="">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">12dp</item>
-        <item name="android:layout_marginBottom">4dp</item>
-        <item name="android:textSize">18sp</item>
-        <item name="android:textStyle">bold</item>
-    </style>
-
-    <style name="FlipCover.Subsection" parent="">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">16dp</item>
-        <item name="android:textStyle">bold</item>
-    </style>
-
-    <!-- 設定画面の左のカテゴリ。選んでいるものは MainActivity で背景を付ける -->
-    <style name="FlipCover.NavItem" parent="">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">48dp</item>
-        <item name="android:layout_marginTop">4dp</item>
-        <item name="android:gravity">center</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:paddingHorizontal">2dp</item>
-        <!-- 「ウィジェット」のような長い名前も 1 行に収まるよう、幅に合わせて文字を小さくする -->
-        <item name="android:autoSizeTextType">uniform</item>
-        <item name="android:autoSizeMinTextSize">10sp</item>
-        <item name="android:autoSizeMaxTextSize">13sp</item>
-        <item name="android:background">?attr/selectableItemBackground</item>
+    <!-- 黒い布地の画面。背景は画面が布の模様で描くので、ここでは同じ黒を敷いておく（ライブラリは使わない） -->
+    <style name="Theme.FlipCover" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/cloth</item>
+        <item name="android:colorBackground">@color/cloth</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
     </style>
 </resources>
