@@ -9,6 +9,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Display
@@ -57,12 +59,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // カバー画面で開かれたときと、閉じている間に開かれたとき（Galaxy のルーチンが「閉じたら FlipCover を開く」を
         // 実行したときなど）は、設定ではなく、カバー画面の表示（時計やアプリのボタン）を出す
-        val onCover = runCatching { display?.displayId }.getOrNull().let { it != null && it != Display.DEFAULT_DISPLAY }
-        if (onCover || CoverActivity.folded(this)) {
-            CoverActivity.open(this)
-            finish()
-            return
-        }
+        if (goCover("開かれたとき")) return
+        // ルーチンは閉じた瞬間に FlipCover を開くので、そのときはまだ画面が切り替わる途中のことがある。
+        // このあと画面の点き方が変わったときと、少し待ったあとにも確かめる
+        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, handler)
+        for (ms in longArrayOf(300, 1000, 2500)) handler.postDelayed({ goCover("${ms}ミリ秒後") }, ms)
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
         pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET, -1) ?: -1
@@ -128,9 +129,47 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 設定画面を開いたまま閉じたあとで、ルーチンが FlipCover を開いたときも、カバー画面の表示を出す
-        if (CoverActivity.folded(this)) CoverActivity.open(this)
+        if (goCover("画面に戻ったとき", always = false)) return
         refresh()
+    }
+
+    /** 設定画面を開いたまま閉じたあとで、ルーチンが FlipCover を開いたとき。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        goCover("もう一度開かれたとき")
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        runCatching { getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener) }
+        super.onDestroy()
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** メイン画面が消えた・カバー画面が点いた、などの変化があったら、閉じたかを確かめる。 */
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) { goCover("画面の点き方が変わったとき", always = false) }
+    }
+
+    /**
+     * カバー画面で開かれているか、端末が閉じていれば、設定画面をやめて、カバー画面の表示を出す。出したら true。
+     * うまく出ないときに調べられるよう、確かめたときの様子を「全般」の下の記録に残す（[timing] は、いつ確かめたか。[always] でなければ、出すときだけ残す）。
+     */
+    private fun goCover(timing: String, always: Boolean = true): Boolean {
+        if (isFinishing || isDestroyed) return true
+        val onCover = runCatching { display?.displayId }.getOrNull().let { it != null && it != Display.DEFAULT_DISPLAY }
+        val go = onCover || CoverActivity.folded(this)
+        if (go || always) {
+            val id = runCatching { display?.displayId }.getOrNull()
+            CoverLog.add(this, "$timing：設定画面は id=$id、${CoverLog.states(this)} → ${if (go) "カバー画面に出す" else "設定画面のまま"}")
+        }
+        if (!go) return false
+        CoverActivity.open(this)
+        finish()
+        return true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -378,7 +417,7 @@ class MainActivity : AppCompatActivity() {
         editor.show(CoverContent.create(this, prefs, size, editing = true, expandedPreview = expandedPreview), size, cutouts)
 
         findViewById<TextView>(R.id.serviceStatus).text = "閉じたら自動で出す方法は「全般」にあります"
-        findViewById<TextView>(R.id.displayInfo).text = displayInfo()
+        findViewById<TextView>(R.id.displayInfo).text = displayInfo() + "\n\n閉じたら出す仕組みの記録（新しい順）\n" + CoverLog.text(this)
     }
 
     private fun displayInfo(): String {

@@ -65,6 +65,7 @@ APK は Secrets の固定の鍵で署名するので、上書きで更新でき�
 - **手元**：`./gradlew assembleDebug`（Android SDK が必要）
 
 ## 調整したいとき
+- 閉じても出ないとき：FlipCover の「全般」の下の「閉じたら出す仕組みの記録」を見る。いつ・どの画面がどう点いているときに・どう判断したかが、新しい順に残っている（端末の中にだけ残る）
 - カバー画面が見つからないとき：アプリ下部の「ディスプレイ情報」を見て、`CoverContent.findCoverDisplay()` の id を直す
 - 光の時計の見た目：`LightDialView.kt`
 - ステッチの見た目：`StitchViews.kt`

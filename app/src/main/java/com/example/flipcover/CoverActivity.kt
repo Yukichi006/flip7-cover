@@ -53,6 +53,7 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
 
     override fun onStart() {
         super.onStart()
+        CoverLog.add(this, "カバー画面の表示が出た：id=${runCatching { display?.displayId }.getOrNull()}、${CoverLog.states(this)}")
         // 端末を開いたときに、この画面がメイン画面へ移されることがある。カバー画面用の表示なので閉じる
         if (runCatching { display?.displayId }.getOrNull() == Display.DEFAULT_DISPLAY && !folded(this)) {
             finish()
@@ -104,11 +105,14 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
     }
 
     companion object {
-        /** 端末が閉じていて、カバー画面だけが点いているか。 */
+        /**
+         * 端末が閉じているか。メイン画面が点いておらず、カバー画面が消えていなければ（点いているか、うっすら表示なら）、
+         * 閉じているとみなす。開いたまま画面を消したときは、カバー画面も消えているので、閉じているとはみなさない。
+         */
         fun folded(context: Context): Boolean {
             val dm = context.getSystemService(DisplayManager::class.java) ?: return false
             val cover = CoverContent.findCoverDisplay(dm) ?: return false
-            return cover.state == Display.STATE_ON && dm.getDisplay(Display.DEFAULT_DISPLAY)?.state != Display.STATE_ON
+            return cover.state != Display.STATE_OFF && dm.getDisplay(Display.DEFAULT_DISPLAY)?.state != Display.STATE_ON
         }
 
         /** カバー画面でこの画面を開くための呼び出し（カバー画面が見つからなければ、いまの画面で開く）。 */
@@ -124,7 +128,10 @@ class CoverActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeList
         /** カバー画面でこの画面を開く。カバー画面を指定して開けなければ、指定なしで開く。 */
         fun open(context: Context) {
             runCatching { context.startActivity(intent(context), options(context)) }
-                .onFailure { runCatching { context.startActivity(intent(context)) } }
+                .onFailure {
+                    CoverLog.add(context, "カバー画面を指定して開けなかった：${it.message}")
+                    runCatching { context.startActivity(intent(context)) }
+                }
         }
     }
 }
