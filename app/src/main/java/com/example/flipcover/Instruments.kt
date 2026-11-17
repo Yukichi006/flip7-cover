@@ -361,6 +361,11 @@ class ZipperFader(
     private val onEnd: (top: Boolean) -> Unit = {},
     private val needPermission: () -> Unit = {},
 ) : View(context), SewAware {
+    companion object {
+        /** 引き手の下に縫う文字。 */
+        fun labelFor(function: String) = when (function) { "brightness" -> "BRT"; "app" -> "APP"; else -> "VOL" }
+    }
+
     private val audio = context.getSystemService(AudioManager::class.java)
     private val tooth = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tape = context.stitch(0.9f, Thread.DIM)

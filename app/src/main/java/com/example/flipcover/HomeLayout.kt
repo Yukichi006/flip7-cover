@@ -35,7 +35,7 @@ enum class ModuleType(
     FOLDER("巾着", "複数のアプリをまとめるフォルダ", 1, 1, false),
     CLOCK("時計と日付", "大きな時計と日付", 5, 2, true),
     BATTERY("電池", "本体と Bluetooth 機器の残量", 2, 2, true),
-    SLIDER("フェーダー", "音量・アプリを開くバネ", 1, 2, true),
+    SLIDER("フェーダー", "音量・明るさ・アプリを開くバネ", 1, 2, true),
     TIME("時刻", "時刻だけ（秒も出せる）", 3, 1, true),
     DATE("日付", "日付だけ", 3, 1, true),
     CALENDAR("月のカレンダー", "今月を刺繍の点で。スワイプに動作を割り当てられる", 3, 3, true),
