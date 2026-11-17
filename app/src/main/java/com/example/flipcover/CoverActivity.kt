@@ -607,11 +607,24 @@ class CoverActivity : Activity() {
 
     private fun sliderFor(m: Module): View {
         val function = m[Module.P_FUNCTION] ?: "volume"
-        val label = if (function == "app") "APP" else "VOL"
-        return ZipperFader(this, function, label,
+        return ZipperFader(this, function, ZipperFader.labelFor(function),
             onEnd = { top -> (if (top) m[Module.P_TOP_APP] else m[Module.P_BOTTOM_APP])?.let { repo.find(it) }?.let { repo.launch(it, grid) } },
-            needPermission = {},
+            needPermission = { showBrightnessSheet() },
         ).apply { setOnLongClickListener { enterEdit(); true } }
+    }
+
+    /** 明るさのフェーダーに触れたが、「システム設定の変更」がまだ許可されていないときに出す。 */
+    private fun showBrightnessSheet() = openSheet("明るさのフェーダー") { s ->
+        s.setTabs(emptyList(), 0) {}
+        s.setBody(actionList(this, listOf(
+            "「システム設定の変更」の画面を開く" to {
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, android.net.Uri.parse("package:$packageName")))
+                }
+                closeSheet()
+            },
+        ), note = "画面の明るさを変えるには、「システム設定の変更」で FlipCover を許可してください。\n" +
+            "明るさと、明るさの自動調整のオン・オフだけを変えます。カバー画面で開きにくいときは、端末を開いて「設定」→「アプリ」→ FlipCover から許可できます。"))
     }
 
     // ------------------------------------------------------------------
@@ -943,9 +956,10 @@ class CoverActivity : Activity() {
             ModuleType.SLIDER -> {
                 val f = m[Module.P_FUNCTION] ?: "volume"
                 listOf(
-                    "音量にする" to { save(m.with(Module.P_FUNCTION, "volume")) },
-                    "アプリを開くバネにする" to { save(m.with(Module.P_FUNCTION, "app")) },
-                ).filter { !it.first.startsWith(if (f == "app") "アプリ" else "音量") } + if (f == "app") listOf(
+                    "volume" to ("音量にする" to { save(m.with(Module.P_FUNCTION, "volume")) }),
+                    "brightness" to ("明るさにする（タップで自動調整の切り替え）" to { save(m.with(Module.P_FUNCTION, "brightness")) }),
+                    "app" to ("アプリを開くバネにする" to { save(m.with(Module.P_FUNCTION, "app")) }),
+                ).filter { it.first != f }.map { it.second } + if (f == "app") listOf(
                     "上端で開くアプリ（いま：${m[Module.P_TOP_APP]?.let { repo.find(it) }?.let { repo.label(it) } ?: "なし"}）" to appChooser(Module.P_TOP_APP),
                     "下端で開くアプリ（いま：${m[Module.P_BOTTOM_APP]?.let { repo.find(it) }?.let { repo.label(it) } ?: "なし"}）" to appChooser(Module.P_BOTTOM_APP),
                 ) else emptyList()
