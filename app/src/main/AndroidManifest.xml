@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 接続中の Bluetooth 機器の電池残量を読む -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- 明るさのフェーダーで、画面の明るさと自動調整のオン・オフを変える（「システム設定の変更」で自分で許可したときだけ）。
-         7.2.0 で試しに足した。Play プロテクトに有害と判定されたら、この行と明るさのフェーダーを外して戻す -->
-    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <!-- カバー画面に置くアプリを選ぶため、ランチャーに出るアプリの一覧を取得する -->
     <queries>
         <intent>
