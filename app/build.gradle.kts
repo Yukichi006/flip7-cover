@@ -45,6 +45,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    // テストで、パソコンの上に Android の画面を組み立てられるようにする（マニフェストとテーマも読ませる）
+    testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
-// ライブラリは使わない（Android の標準機能と Kotlin だけで作る。FlipHome と同じ）
+// ライブラリは使わない（Android の標準機能と Kotlin だけで作る。FlipHome と同じ）。
+// 下の 2 つはテストのときだけ使う道具で、配る APK には入らない（持ち主の了承済み）：
+// JUnit はテストを動かす土台、Robolectric はパソコンの上で Android の画面を動かす道具
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+}
