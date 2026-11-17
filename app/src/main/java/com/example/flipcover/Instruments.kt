@@ -17,7 +17,6 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
-import android.provider.Settings
 import android.text.TextUtils
 import android.text.format.DateFormat
 import android.view.HapticFeedbackConstants
@@ -350,16 +349,44 @@ class DotCalendarView(
 /**
  * 縦のファスナーの形をしたフェーダー。引き手を上下に動かして値を変える。閉じている（引き手より下の）歯は白く、開いている歯は薄く描く。
  * - "volume"：メディアの音量。タップで消音の切り替え
- * - "brightness"：画面の明るさ（「システム設定の変更」の許可が要る）。タップで明るさの自動調整の切り替え
+ * - "brightness"：カバー画面の明るさ（FlipCover の画面の明るさとして変える。権限は要らない）。タップで「端末の設定どおり（AUTO）」との切り替え
  * - "app"：真ん中で待つバネのフェーダー。上端・下端まで倒すとアプリを開き、離すと真ん中へ戻る
  */
+/**
+ * カバー画面の明るさ。
+ * カバー画面の明るさの設定は Samsung の独自の設定で、ほかのアプリからは変えられない（端末全体の明るさを変えると、開いたときの画面が変わる）。
+ * そこで、FlipCover の画面（ウィンドウ）の明るさとして変える。FlipCover が出ている間だけ効き、ほかのアプリに移ると端末の設定に戻る。
+ * 選んだ値は保存して、FlipCover を開くたびに当て直す。保存がない（null）ときは、端末の設定どおり。
+ */
+object CoverBrightness {
+    private const val KEY = "coverBrightness"
+
+    /** 保存してある明るさ（0.01〜1）。端末の設定どおりなら null。 */
+    fun saved(context: Context): Float? =
+        context.getSharedPreferences("home", Context.MODE_PRIVATE).getFloat(KEY, -1f).takeIf { it >= 0f }
+
+    /** 明るさを保存して、画面に当てる。null なら端末の設定どおりに戻す。 */
+    fun set(context: Context, value: Float?) {
+        val v = value?.coerceIn(0.01f, 1f)
+        context.getSharedPreferences("home", Context.MODE_PRIVATE).edit().putFloat(KEY, v ?: -1f).apply()
+        (context as? android.app.Activity)?.let { apply(it) }
+    }
+
+    /** 保存してある明るさを、[activity] の画面に当てる。 */
+    fun apply(activity: android.app.Activity) {
+        val w = activity.window ?: return
+        w.attributes = w.attributes.apply {
+            screenBrightness = saved(activity) ?: android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+    }
+}
+
 @SuppressLint("ViewConstructor")
 class ZipperFader(
     context: Context,
     private val function: String,
     private val label: String,
     private val onEnd: (top: Boolean) -> Unit = {},
-    private val needPermission: () -> Unit = {},
 ) : View(context), SewAware {
     companion object {
         /** 引き手の下に縫う文字。 */
@@ -388,14 +415,8 @@ class ZipperFader(
         override fun onReceive(c: Context, i: Intent) { if (!dragging) { readValue(); invalidate() } }
     }
 
-    /** 明るさが「自動」か（クイック設定で切り替えても、すぐに表示を変える）。 */
-    private fun autoBrightness() = function == "brightness" && runCatching {
-        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
-    }.getOrDefault(false)
-
-    private val brightnessObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
-        override fun onChange(selfChange: Boolean) { if (!dragging) { readValue(); invalidate() } }
-    }
+    /** 明るさが「端末の設定どおり」か（このときは下の文字を AUTO にする）。 */
+    private fun autoBrightness() = function == "brightness" && CoverBrightness.saved(context) == null
     private val autoStitch = context.stitch(1.1f, Thread.ALERT)
     private val autoText = context.threadText(10f, bold = true, color = Thread.ALERT).apply { textAlign = Paint.Align.CENTER; letterSpacing = 0.15f }
 
@@ -407,16 +428,11 @@ class ZipperFader(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (function == "volume") context.registerReceiver(volumeReceiver, IntentFilter("android.media.VOLUME_CHANGED_ACTION"), Context.RECEIVER_EXPORTED)
-        if (function == "brightness") runCatching {
-            context.contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS_MODE), false, brightnessObserver)
-            context.contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS), false, brightnessObserver)
-        }
         readValue()
     }
 
     override fun onDetachedFromWindow() {
         if (function == "volume") runCatching { context.unregisterReceiver(volumeReceiver) }
-        if (function == "brightness") runCatching { context.contentResolver.unregisterContentObserver(brightnessObserver) }
         super.onDetachedFromWindow()
     }
 
@@ -426,7 +442,8 @@ class ZipperFader(
                 val max = a.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
                 a.getStreamVolume(AudioManager.STREAM_MUSIC) / max.toFloat()
             } ?: 0.5f
-            "brightness" -> runCatching { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f }.getOrDefault(0.5f)
+            // 端末の設定どおりのときは、カバー画面の今の明るさを読めないので、真ん中に置いておく
+            "brightness" -> CoverBrightness.saved(context) ?: 0.5f
             else -> 0.5f
         }
     }
@@ -437,10 +454,7 @@ class ZipperFader(
                 val max = a.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 a.setStreamVolume(AudioManager.STREAM_MUSIC, (value * max).roundToInt(), 0)
             }
-            "brightness" -> if (Settings.System.canWrite(context)) runCatching {
-                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
-                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, (value * 255).roundToInt().coerceIn(1, 255))
-            }
+            "brightness" -> CoverBrightness.set(context, value)
         }
     }
 
@@ -451,10 +465,6 @@ class ZipperFader(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (function == "brightness" && !Settings.System.canWrite(context)) {
-                    needPermission()
-                    return false
-                }
                 downY = event.y
                 moved = false
                 dragging = true
@@ -499,12 +509,12 @@ class ZipperFader(
     private fun tap() {
         when (function) {
             "volume" -> audio?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI)
-            "brightness" -> runCatching {
-                val auto = Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE)
-                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
-                    if (auto == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC) Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL else Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC)
+            "brightness" -> {
+                // 端末の設定どおり（AUTO）と、前に選んだ明るさ（なければ真ん中）を切り替える
+                val auto = CoverBrightness.saved(context) == null
+                CoverBrightness.set(context, if (auto) value else null)
                 android.widget.Toast.makeText(context,
-                    if (auto == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC) "明るさ：手動" else "明るさ：自動", android.widget.Toast.LENGTH_SHORT).show()
+                    if (auto) "明るさ：FlipCover で決める" else "明るさ：端末の設定どおり", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         readValue()
