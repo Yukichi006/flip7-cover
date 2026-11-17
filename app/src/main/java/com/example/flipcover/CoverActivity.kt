@@ -122,7 +122,8 @@ class CoverActivity : Activity() {
 
         editBar = makeEditBar()
         editBar.visibility = View.GONE
-        root.addView(editBar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dpi(70f), Gravity.TOP).apply {
+        // カバー画面は小さいので、帯は右上に小さく出す（幅いっぱいに出すと、いちばん上の段のマスに触れなくなる）
+        root.addView(editBar, FrameLayout.LayoutParams(dpi(166f), dpi(62f), Gravity.TOP or Gravity.END).apply {
             setMargins(dpi(6f), 0, dpi(6f), 0)
         })
 
@@ -680,6 +681,12 @@ class CoverActivity : Activity() {
         dock.editing = true
         rebuildHome()
         editBar.visibility = View.VISIBLE
+        // 帯に説明を書く場所がないので、はじめの何回かだけ、使い方を知らせる
+        val hints = getSharedPreferences("home", 0).getInt("editHints", 0)
+        if (hints < 3) {
+            getSharedPreferences("home", 0).edit().putInt("editHints", hints + 1).apply()
+            toast("空いたマスをタップして追加。右上の帯は上下にずらせます")
+        }
         // 前に下へ寄せていたら、下に出す
         editBar.post { editBar.translationY = if (getSharedPreferences("home", 0).getBoolean("editBarBottom", false)) editBarBottomShift() else 0f }
         editBar.alpha = 0f
@@ -694,18 +701,12 @@ class CoverActivity : Activity() {
         editBar.animate().alpha(0f).setDuration(150).withEndAction { editBar.visibility = View.GONE }.start()
     }
 
-    /** 編集モードの間、画面の上に出す帯。説明と「…」「完了」。 */
+    /** 編集モードの間、画面の右上に出す小さな帯。「…」と「完了」。 */
     private fun makeEditBar(): View = PatchLayout(this, PatchPainter.Shape.Round(40f)).apply {
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        row.addView(TextView(context).apply {
-            text = "空いたマスをタップして追加\nこの帯は上下にずらせます"
-            setTextColor(Thread.COLOR)
-            textSize = 11.5f
-            setShadowLayer(dp(0.6f), 0f, dp(1f), Thread.SHADOW)
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         row.addView(Pill(context, "…").apply { setOnClickListener { showEditMenu(this) } },
             LinearLayout.LayoutParams(dpi(56f), dpi(46f)))
         row.addView(Pill(context, "完了", selected = true).apply { setOnClickListener { exitEdit() } },
@@ -714,7 +715,7 @@ class CoverActivity : Activity() {
         // 帯そのものへのタップは、後ろのマス目に通さない
         isClickable = true
         val p = dpi(9f)
-        setPadding(dpi(22f), p, p, p)
+        setPadding(p, p, p, p)
         // 帯をつまんで上下にずらせる（上のマスに部品を置くときなど）。離すと、上か下の近いほうに寄る
         var downY = 0f
         var startT = 0f
